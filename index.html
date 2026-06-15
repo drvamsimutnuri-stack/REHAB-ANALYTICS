@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PR Registry — Pulmonary Rehabilitation Data Hub (BLWC Cipla SOP)</title>
+<!-- External libraries loaded from CDN. They work on GitHub Pages. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#eef2f3; --surface:#ffffff; --surface-2:#f7fafb;
+    --ink:#16282f; --muted:#5d7079; --faint:#8a9aa1;
+    --line:#d8e1e4; --line-strong:#c2cfd3;
+    --primary:#0e7c86; --primary-d:#0a5e66; --primary-soft:#e1f0f1;
+    --accent:#2a6f97; --good:#2f9e6f; --good-soft:#e4f4ec;
+    --warn:#bd7d18; --warn-soft:#f8efdc; --bad:#c5483f; --bad-soft:#f8e6e4;
+    --radius:10px; --radius-s:7px;
+    --shadow:0 1px 2px rgba(16,40,47,.05), 0 6px 20px -12px rgba(16,40,47,.25);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent)}
+  h1,h2,h3,h4{margin:0;font-weight:650;letter-spacing:-.01em}
+  /* ---------- App shell ---------- */
+  header.appbar{
+    position:sticky;top:0;z-index:40;background:var(--primary-d);
+    color:#eafafb;display:flex;align-items:center;gap:14px;
+    padding:10px 18px;box-shadow:0 2px 10px -4px rgba(0,0,0,.4)
+  }
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .brand .glyph{
+    width:34px;height:34px;border-radius:9px;flex:0 0 auto;
+    background:linear-gradient(150deg,#15a3ad,#0a5e66);
+    display:grid;place-items:center;color:#fff;font-size:18px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)
+  }
+  .brand h1{font-size:15.5px;color:#fff;line-height:1.05}
+  .brand .sub{font-size:11px;color:#a9dde1;letter-spacing:.02em}
+  .appbar .spacer{flex:1}
+  .appbar .pill{
+    font-size:11px;background:rgba(255,255,255,.12);color:#d3f3f5;
+    padding:3px 9px;border-radius:20px;border:1px solid rgba(255,255,255,.16)
+  }
+  nav.tabs{
+    background:var(--surface);border-bottom:1px solid var(--line);
+    display:flex;gap:2px;padding:0 12px;position:sticky;top:54px;z-index:30;
+    overflow-x:auto
+  }
+  nav.tabs button{
+    appearance:none;border:0;background:none;font:inherit;cursor:pointer;
+    color:var(--muted);padding:12px 15px;border-bottom:2.5px solid transparent;
+    white-space:nowrap;font-weight:550;font-size:13.5px
+  }
+  nav.tabs button:hover{color:var(--ink)}
+  nav.tabs button.active{color:var(--primary);border-bottom-color:var(--primary)}
+  main{max-width:1180px;margin:0 auto;padding:22px 18px 90px}
+  .view{display:none}
+  .view.active{display:block;animation:fade .2s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  /* ---------- Cards & layout ---------- */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .pad{padding:18px}
+  .grid{display:grid;gap:14px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .stack{display:flex;flex-direction:column;gap:14px}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .muted{color:var(--muted)}
+  .faint{color:var(--faint)}
+  .eyebrow{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--primary);font-weight:700}
+  .divider{height:1px;background:var(--line);margin:4px 0}
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    appearance:none;font:inherit;cursor:pointer;border-radius:var(--radius-s);
+    padding:8px 14px;font-weight:600;font-size:13px;border:1px solid var(--line-strong);
+    background:var(--surface);color:var(--ink);display:inline-flex;align-items:center;gap:7px;
+    transition:.12s
+  }
+  .btn:hover{border-color:var(--muted)}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.primary:hover{background:var(--primary-d);border-color:var(--primary-d)}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--accent)}
+  .btn.ghost:hover{background:var(--surface-2)}
+  .btn.danger{color:var(--bad);border-color:var(--bad-soft)}
+  .btn.danger:hover{background:var(--bad-soft)}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  /* ---------- Form fields ---------- */
+  .field{display:flex;flex-direction:column;gap:5px;min-width:0}
+  .field>label{font-size:12px;font-weight:600;color:var(--muted)}
+  .field input[type=text],.field input[type=number],.field input[type=date],
+  .field input[type=tel],.field select,.field textarea{
+    font:inherit;font-size:13.5px;padding:8px 10px;border:1px solid var(--line-strong);
+    border-radius:var(--radius-s);background:var(--surface);color:var(--ink);width:100%
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{
+    outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)
+  }
+  .field textarea{resize:vertical;min-height:54px}
+  .field .unit{font-size:11px;color:var(--faint)}
+  .grid-2{grid-template-columns:repeat(2,1fr)}
+  .grid-3{grid-template-columns:repeat(3,1fr)}
+  .grid-4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:780px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+
+  /* checkbox / radio chips */
+  .checks{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;
+    border:1px solid var(--line-strong);background:var(--surface);border-radius:20px;
+    padding:6px 12px;font-size:12.5px;color:var(--ink);transition:.12s
+  }
+  .chip:hover{border-color:var(--muted)}
+  .chip input{accent-color:var(--primary);width:14px;height:14px;margin:0}
+  .chip.on{background:var(--primary-soft);border-color:var(--primary);color:var(--primary-d);font-weight:600}
+  .radioset{display:flex;flex-wrap:wrap;gap:6px}
+  .radioset .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  /* SOP accordion sections */
+  .section{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);overflow:hidden}
+  .section+.section{margin-top:14px}
+  .section>.head{
+    display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;
+    background:var(--surface-2);border-bottom:1px solid transparent
+  }
+  .section.open>.head{border-bottom-color:var(--line)}
+  .section>.head .ix{
+    font-family:var(--mono);font-size:12px;font-weight:700;color:#fff;background:var(--primary);
+    width:24px;height:24px;border-radius:6px;display:grid;place-items:center;flex:0 0 auto
+  }
+  .section>.head h3{font-size:14.5px;flex:1}
+  .section>.head .chev{color:var(--muted);transition:.2s;font-size:13px}
+  .section.open>.head .chev{transform:rotate(90deg)}
+  .section>.body{padding:18px 16px;display:none}
+  .section.open>.body{display:block}
+  .subhead{font-size:12.5px;font-weight:700;color:var(--primary-d);margin:6px 0 2px;letter-spacing:.01em}
+
+  /* data tables */
+  table.dt{width:100%;border-collapse:collapse;font-size:13px}
+  table.dt th,table.dt td{border:1px solid var(--line);padding:7px 9px;text-align:left}
+  table.dt th{background:var(--surface-2);font-weight:600;color:var(--muted);font-size:12px}
+  table.dt td input{width:100%;border:0;background:transparent;font:inherit;padding:2px 0}
+  table.dt td input:focus{outline:none}
+  table.dt tr:hover td{background:var(--surface-2)}
+  .scroll-x{overflow-x:auto}
+
+  /* patient list */
+  table.list{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.list th{text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);font-weight:700;padding:8px 12px;border-bottom:1px solid var(--line)}
+  table.list td{padding:10px 12px;border-bottom:1px solid var(--line)}
+  table.list tr{cursor:pointer}
+  table.list tbody tr:hover{background:var(--surface-2)}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;background:var(--primary-soft);color:var(--primary-d);font-weight:600}
+  .tag.gray{background:#eef2f3;color:var(--muted)}
+  .tag.good{background:var(--good-soft);color:var(--good)}
+  .tag.warn{background:var(--warn-soft);color:var(--warn)}
+
+  /* stat tiles */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:780px){.tiles{grid-template-columns:1fr 1fr}}
+  .tile{padding:16px}
+  .tile .n{font-size:30px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+  .tile .l{font-size:12px;color:var(--muted);margin-top:6px;font-weight:550}
+  .tile .d{font-size:11px;color:var(--faint);margin-top:2px}
+  .tile.accent{border-left:3px solid var(--primary)}
+
+  .chartbox{position:relative;height:260px}
+  .chartbox.sm{height:210px}
+  .legend-note{font-size:11px;color:var(--faint)}
+
+  /* toast */
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#fff;padding:10px 18px;border-radius:24px;font-size:13px;
+    box-shadow:0 10px 30px -10px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:.25s;z-index:80;max-width:90vw}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast.good{background:var(--good)} #toast.bad{background:var(--bad)}
+
+  /* modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(16,40,47,.45);display:none;place-items:center;z-index:70;padding:20px}
+  .modal-bg.show{display:grid}
+  .modal{background:var(--surface);border-radius:var(--radius);max-width:440px;width:100%;box-shadow:var(--shadow);overflow:hidden}
+  .modal .pad{padding:20px}
+
+  .empty{text-align:center;padding:46px 20px;color:var(--muted)}
+  .empty .big{font-size:34px;margin-bottom:8px}
+  .req{color:var(--bad)}
+  .help{font-size:11.5px;color:var(--faint);margin-top:2px}
+  .save-bar{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);padding:14px 0 4px;display:flex;gap:10px;justify-content:flex-end;z-index:20}
+  .inline-note{font-size:12px;background:var(--warn-soft);color:#7a5410;border:1px solid #ecd9ad;border-radius:var(--radius-s);padding:9px 12px}
+  code.k{font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--line);padding:1px 5px;border-radius:4px}
+  .footer{max-width:1180px;margin:0 auto;padding:20px 18px 40px;color:var(--faint);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<header class="appbar">
+  <div class="brand">
+    <div class="glyph">⁂</div>
+    <div>
+      <h1>PR Registry</h1>
+      <div class="sub">Pulmonary Rehabilitation Data Hub · BLWC Cipla SOP</div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <span class="pill" id="storageBadge">Local browser storage</span>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-view="dashboard" class="active">Dashboard</button>
+  <button data-view="patients">Patients</button>
+  <button data-view="form">Data entry</button>
+  <button data-view="calculators">Calculators</button>
+  <button data-view="data">Export / Backup</button>
+</nav>
+
+<main>
+  <!-- DASHBOARD -->
+  <section class="view active" id="view-dashboard"></section>
+  <!-- PATIENTS -->
+  <section class="view" id="view-patients"></section>
+  <!-- FORM -->
+  <section class="view" id="view-form"></section>
+  <!-- CALCULATORS -->
+  <section class="view" id="view-calculators"></section>
+  <!-- DATA -->
+  <section class="view" id="view-data"></section>
+</main>
+
+<div class="footer">
+  PR Registry · de-identify where possible · this build stores data in <b>this browser only</b> unless a backend is configured.
+</div>
+
+<div id="toast"></div>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+
+<script>
+/* ============================================================================
+   PR REGISTRY  —  Pulmonary Rehabilitation patient data capture
+   Built around the BLWC Cipla Pulmonary Rehabilitation SOP.
+
+   ARCHITECTURE NOTE (for upscaling to a backend later):
+   All persistence goes through the `Store` object below. Today it uses
+   localStorage (LocalAdapter). To move to a shared multi-researcher backend,
+   implement an adapter with the same async methods (list/get/save/remove)
+   and set CONFIG.storage = 'api'. Nothing else in the app needs to change.
+   See ApiAdapter stub at the bottom and the README notes shared in chat.
+============================================================================ */
+"use strict";
+
+const CONFIG = {
+  appVersion: "1.0.0",
+  schemaVersion: 1,
+  storage: "local",          // 'local' (default) | 'api'  (see Store)
+  apiBaseUrl: ""             // e.g. "https://your-api.example.com" for 'api' mode
+};
+
+/* ---------- tiny DOM helpers ---------- */
+const $  = (s, r=document)=>r.querySelector(s);
+const $$ = (s, r=document)=>Array.from(r.querySelectorAll(s));
+function h(tag, attrs={}, kids){
+  const e=document.createElement(tag);
+  for(const k in attrs){
+    const v=attrs[k];
+    if(k==="class") e.className=v;
+    else if(k==="html") e.innerHTML=v;
+    else if(k.startsWith("on")&&typeof v==="function") e.addEventListener(k.slice(2),v);
+    else if(v!==null&&v!==undefined&&v!==false) e.setAttribute(k,v);
+  }
+  if(kids!=null){ (Array.isArray(kids)?kids:[kids]).forEach(c=>{
+    if(c==null||c===false) return;
+    e.append(c.nodeType?c:document.createTextNode(c));
+  });}
+  return e;
+}
+function toast(msg,kind=""){
+  const t=$("#toast"); t.textContent=msg; t.className="show "+kind;
+  clearTimeout(t._t); t._t=setTimeout(()=>t.className=t.className.replace("show","").trim(),2200);
+}
+function uid(){ return "p_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7); }
+function nowISO(){ return new Date().toISOString(); }
+function getPath(o,p){ return p.split(".").reduce((a,k)=>(a==null?a:a[k]),o); }
+function setPath(o,p,v){
+  const ks=p.split("."); let a=o;
+  for(let i=0;i<ks.length-1;i++){ if(a[ks[i]]==null||typeof a[ks[i]]!=="object") a[ks[i]]={}; a=a[ks[i]]; }
+  a[ks[ks.length-1]]=v;
+}
+function fmtDate(iso){ if(!iso) return "—"; const d=new Date(iso); return isNaN(d)?"—":d.toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"}); }
+function num(v){ const n=parseFloat(v); return isFinite(n)?n:null; }
+
+/* ============================================================================
+   STORAGE LAYER  (swap this for a backend later — keep the method signatures)
+============================================================================ */
+const LocalAdapter = {
+  KEY:"pr_registry_patients_v1",
+  _read(){ try{ return JSON.parse(localStorage.getItem(this.KEY)||"[]"); }catch(e){ return []; } },
+  _write(arr){ localStorage.setItem(this.KEY, JSON.stringify(arr)); },
+  async list(){ return this._read(); },
+  async get(id){ return this._read().find(p=>p.id===id)||null; },
+  async save(p){
+    const arr=this._read(); const i=arr.findIndex(x=>x.id===p.id);
+    if(i>=0) arr[i]=p; else arr.push(p);
+    this._write(arr); return p;
+  },
+  async remove(id){ this._write(this._read().filter(p=>p.id!==id)); },
+  async bulkReplace(arr){ this._write(arr); }
+};
+
+/* Stub for future shared backend. Implement these 4 methods against your API
+   (or Supabase/Firebase) and flip CONFIG.storage='api'. */
+const ApiAdapter = {
+  async list(){ const r=await fetch(CONFIG.apiBaseUrl+"/patients"); return r.json(); },
+  async get(id){ const r=await fetch(CONFIG.apiBaseUrl+"/patients/"+id); return r.json(); },
+  async save(p){ const r=await fetch(CONFIG.apiBaseUrl+"/patients/"+p.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}); return r.json(); },
+  async remove(id){ await fetch(CONFIG.apiBaseUrl+"/patients/"+id,{method:"DELETE"}); },
+  async bulkReplace(arr){ await fetch(CONFIG.apiBaseUrl+"/patients/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(arr)}); }
+};
+
+const Store = CONFIG.storage==="api" ? ApiAdapter : LocalAdapter;
+
+/* ============================================================================
+   SOP-DERIVED OPTION SETS
+============================================================================ */
+const OPT = {
+  gender:["Male","Female","Other"],
+  yesno:["Yes","No"],
+  diagnoses:["COPD","ILD","Asthma","Bronchiectasis","PTB","Post TB sequelae","ABPA",
+             "Post COVID sequelae","Pulmonary hypertension","Post thoracic surgery"],
+  comorbidities:["HTN","IHD","HF","DM","Obesity","Osteoporosis","Arthritis","CVA","GERD","Anaemia"],
+  comorbidityNotes:[ // free-text categories from SOP
+    ["cardiovascular","Cardiovascular (other)"],["metabolic","Metabolic / Endocrine (other)"],
+    ["musculoskeletal","Musculoskeletal (other)"],["neurological","Neurological (other)"],
+    ["cognitive","Cognitive / Psychiatric"],["gastrointestinal","Gastrointestinal (other)"],
+    ["others","Other comorbidity"]
+  ],
+  surgical:["Thoracic Surgery","Abdominal Surgery"],
+  admissionWindow:["In last 1 month","In last 3 months","In last 6 months","In last 1 year"],
+  admissionCount:["1","2","3",">3"],
+  mmrc:["Grade 0","Grade 1","Grade 2","Grade 3","Grade 4"],
+  gold:["I","II","III","IV"],
+  abe:["A","B","E"],
+  gina:["Step 1","Step 2","Step 3","Step 4","Step 5"],
+  pattern:["Obstructive","Restrictive","Mixed"],
+  avail:["Available","Not Available"],
+  presentAbsent:["Present","Absent"],
+  radiology:["Air Trapping","Hyperinflation"],
+  hbStatus:["Normal","Low","High"],
+  hydration:["Moist","Dry","Coated","Fissured"],
+  scales:["CRQ","EQ-5D 5L","K-BILD","HADS","CAT","TUG","STOP-BANG"],
+  vaccination:["Flu vaccine","Pneumococcal 23","Pneumococcal 13","Herpes Zoster"],
+  physical:["Sedentary","Active"],
+  ambulatory:["Self-ambulatory","Needs assistance"],
+  adlItems:["Washroom","Bathing","Dressing","Leisure"],
+  selfDep:["Self","Dependent"],
+  oxNeed:["With oxygen","Without oxygen"],
+  goals:["Reduce Shortness of breath","Improve Exercise capacity","Enhance Quality of life",
+         "Improve Self-management skills","Improve Psychological symptoms","Smoking Cessation",
+         "Improve Nutritional status","Gain Independence in daily activity"],
+  rehabType:["Physical","Hybrid"],
+  // PFT value table (label,key)
+  pftValues:[
+    ["FEV1","fev1"],["FVC","fvc"],["FEV1/FVC","fev1fvc"],["FRC","frc"],
+    ["DLCO (C)","dlco"],["KCO","kco"],["AX","ax"],["Fres","fres"],
+    ["RV","rv"],["TLC","tlc"],["RV/TLC","rvtlc"],["R5","r5"],
+    ["R20","r20"],["R5/20","r520"],["FeNO 50","feno50"],["FeNO 200","feno200"]
+  ],
+  // longitudinal assessment-sheet parameters (label,key,unit) — the analytics core
+  assessParams:[
+    ["HR","hr","bpm"],["SpO₂","spo2","%"],["BP systolic","bpSys","mmHg"],["BP diastolic","bpDia","mmHg"],
+    ["RR","rr","/min"],["Borg RPE","borg","/20"],["O₂ consumption","o2","mL/kg/min"],
+    ["FEV1/FVC","fev1fvc","ratio"],["6MWD","mwd6","m"],["1RM upper limb","rmUpper","kg"],
+    ["1RM lower limb","rmLower","kg"],["MIP","mip","cmH₂O"],["MEP","mep","cmH₂O"],
+    ["CAT","cat","score"],["HADS","hads","score"],["CRQ","crq","score"],
+    ["EQ-5D 5L","eq5d","score"],["K-BILD","kbild","score"],["TUG","tug","s"],["STOP-BANG","stopbang","score"]
+  ],
+  assessTimepoints:[["initial","Initial"],["wk1","Week 1"],["wk8","Week 8"],["wk24","Week 24"]],
+  followWeeks:[["week3","Week 3"],["week4","Week 4"],["week6","Week 6"],["week8","Week 8"]],
+  maintWeeks:[["week12","Week 12"],["week16","Week 16"],["week20","Week 20"],["week24","Week 24"]],
+  sessionExercises:[["cycling","Cycling"],["treadmill","Treadmill"],["armErg","Arm Ergometer"],["resistance","Resistance Training"]],
+  vitalCols:[["hr","HR"],["spo2","SpO₂"],["bp","BP"],["rr","RR"],["rpe","RPE"]]
+};
+
+/* improvement direction for chart deltas: 'up' = higher is better */
+const PARAM_DIR = {
+  mwd6:"up", rmUpper:"up", rmLower:"up", mip:"up", mep:"up", crq:"up", o2:"up", spo2:"up", fev1fvc:"up",
+  cat:"down", hads:"down", borg:"down", tug:"down", rr:"down", hr:"down", stopbang:"down", kbild:"up", eq5d:"up"
+};
+
+/* ============================================================================
+   PATIENT FACTORY
+============================================================================ */
+function blankPatient(){
+  return {
+    id:uid(), createdAt:nowISO(), updatedAt:nowISO(),
+    meta:{ enteredBy:localStorage.getItem("pr_researcher")||"", siteId:localStorage.getItem("pr_site")||"" },
+    demographics:{ date:new Date().toISOString().slice(0,10), name:"", age:"", gender:"", contact:"",
+      height:"", weight:"", substance:"", ethnicity:"", married:"", address:"", occupation:"",
+      diagnoses:[], diagnosisOther:"", duration:"" },
+    history:{ comorbidities:[], comorbidityNotes:{}, surgical:[], surgicalOther:"", medication:"",
+      oxygenDuration:"", oxygenLpm:"", cpapBipap:"", admissionWindow:[], admissionCount:"", comment:"" },
+    initial:{ hr:"", spo2:"", bpSys:"", bpDia:"", rr:"", mmrc:"",
+      bodyComp:{available:"", ffmi:"", smm:"", si:"", bmi:""}, thighR:"", thighL:"",
+      pft:{available:"", gold:"", abe:"", gina:"", pattern:"", values:{}},
+      radiology:{available:"", findings:[], other:""}, hrct:{available:"", pattern:""},
+      bronchiectasis:{present:"", right:[], left:[]}, echo:{available:"", ph:""}, corPulmonale:"",
+      hb:{available:"", value:"", status:""}, hydration:"",
+      scales:{}, vaccination:[], vaccinationOther:"",
+      physical:"", ambulatory:"", adl:{}, adlOxygen:{}, goals:[], goalsOther:"", comment:"" },
+    assess:{},        // {paramKey:{initial,wk1,wk8,wk24}}
+    followups:{},     // {weekKey:{mmrc,borg,hr,spo2,note}}
+    goalReview:{},    // {goalIndex:'Improved'|'Not Improved'}
+    maintenance:{},   // {weekKey:{...}}
+    progress:{ weeks:[], maint:[] },
+    sessions:[],
+    status:{ startDate:"", endDate:"", rehabType:"", initialDone:false, completed:"", incompleteReason:"" }
+  };
+}
+
+/* ============================================================================
+   FORM BUILDERS  (bind inputs to `current` via path)
+============================================================================ */
+let current = null;   // patient being edited
+
+function fText(label,path,opts={}){
+  const f=h("div",{class:"field"});
+  if(label) f.append(h("label",{},[label, opts.req?h("span",{class:"req"}," *"):""]));
+  const inp=h("input",{type:opts.type||"text", placeholder:opts.ph||"", value:getPath(current,path)??""});
+  if(opts.inputmode) inp.setAttribute("inputmode",opts.inputmode);
+  inp.addEventListener("input",e=>setPath(current,path,e.target.value));
+  f.append(inp);
+  if(opts.unit) f.append(h("div",{class:"unit"},opts.unit));
+  if(opts.help) f.append(h("div",{class:"help"},opts.help));
+  return f;
+}
+function fNum(label,path,opts={}){ return fText(label,path,{...opts,type:"number",inputmode:"decimal"}); }
+
+function fSelect(label,path,options,opts={}){
+  const f=h("div",{class:"field"});
+  if(label) f.append(h("label",{},label));
+  const sel=h("select");
+  sel.append(h("option",{value:""}, opts.placeholder||"— select —"));
+  options.forEach(o=>{
+    const val=Array.isArray(o)?o[0]:o, txt=Array.isArray(o)?o[1]:o;
+    const op=h("option",{value:val},txt); if((getPath(current,path)??"")===val) op.selected=true; sel.append(op);
+  });
+  sel.addEventListener("change",e=>setPath(current,path,e.target.value));
+  f.append(sel);
+  if(opts.help) f.append(h("div",{class:"help"},opts.help));
+  return f;
+}
+
+function fTextarea(label,path,opts={}){
+  const f=h("div",{class:"field"});
+  f.append(h("label",{},[label||"Comments", h("span",{class:"faint"}," (optional)")]));
+  const ta=h("textarea",{placeholder:opts.ph||"Notes / observations…"});
+  ta.value=getPath(current,path)??"";
+  ta.addEventListener("input",e=>setPath(current,path,e.target.value));
+  f.append(ta);
+  return f;
+}
+
+/* multi-select checkbox group bound to array at path */
+function fChecks(label,path,options){
+  const f=h("div",{class:"field"});
+  if(label) f.append(h("label",{},label));
+  const wrap=h("div",{class:"checks"});
+  const arr=()=>{ let a=getPath(current,path); if(!Array.isArray(a)){a=[];setPath(current,path,a);} return a; };
+  options.forEach(o=>{
+    const val=Array.isArray(o)?o[0]:o, txt=Array.isArray(o)?o[1]:o;
+    const on=arr().includes(val);
+    const cb=h("input",{type:"checkbox"}); cb.checked=on;
+    const chip=h("label",{class:"chip"+(on?" on":"")},[cb,txt]);
+    cb.addEventListener("change",()=>{
+      const a=arr(); const i=a.indexOf(val);
+      if(cb.checked){ if(i<0)a.push(val);} else if(i>=0)a.splice(i,1);
+      chip.classList.toggle("on",cb.checked);
+    });
+    wrap.append(chip);
+  });
+  f.append(wrap); return f;
+}
+
+/* single-choice radio group bound to string at path */
+function fRadios(label,path,options,opts={}){
+  const f=h("div",{class:"field"});
+  if(label) f.append(h("label",{},label));
+  const wrap=h("div",{class:"radioset"});
+  options.forEach(o=>{
+    const val=Array.isArray(o)?o[0]:o, txt=Array.isArray(o)?o[1]:o;
+    const on=(getPath(current,path)??"")===val;
+    const rb=h("input",{type:"radio",name:path,style:"display:none"}); rb.checked=on;
+    const chip=h("label",{class:"chip"+(on?" on":"")},[txt]);
+    chip.addEventListener("click",()=>{
+      // toggle off if same value re-clicked
+      const cur=getPath(current,path);
+      const next = cur===val && opts.clearable ? "" : val;
+      setPath(current,path,next);
+      $$(".chip",wrap).forEach(c=>c.classList.remove("on"));
+      if(next) chip.classList.add("on");
+    });
+    wrap.append(chip); chip.prepend(rb);
+  });
+  f.append(wrap); return f;
+}
+
+/* accordion section */
+function section(ix,title,bodyEl,open=false){
+  const sec=h("div",{class:"section"+(open?" open":"")});
+  const head=h("div",{class:"head"},[
+    h("div",{class:"ix"},ix), h("h3",{},title), h("div",{class:"chev"},"▶")
+  ]);
+  head.addEventListener("click",()=>sec.classList.toggle("open"));
+  sec.append(head, h("div",{class:"body"},[bodyEl]));
+  return sec;
+}
+function gridOf(cols, nodes){ const g=h("div",{class:"grid grid-"+cols}); nodes.forEach(n=>n&&g.append(n)); return g; }
+function sub(t){ return h("div",{class:"subhead"},t); }
+
+/* ============================================================================
+   SECTION BUILDERS
+============================================================================ */
+function buildDemographics(){
+  const b=h("div",{class:"stack"});
+  b.append(gridOf(3,[
+    fText("Assessment date","demographics.date",{type:"date"}),
+    fText("Name","demographics.name",{req:true,ph:"Patient name / code"}),
+    fText("Contact number","demographics.contact",{type:"tel"})
+  ]));
+  b.append(gridOf(4,[
+    fNum("Age","demographics.age",{unit:"years"}),
+    fSelect("Gender","demographics.gender",OPT.gender),
+    fNum("Height","demographics.height",{unit:"cm"}),
+    fNum("Weight","demographics.weight",{unit:"kg"})
+  ]));
+  b.append(gridOf(3,[
+    fText("Substance abuse","demographics.substance"),
+    fText("Ethnicity","demographics.ethnicity"),
+    fSelect("Married","demographics.married",OPT.yesno)
+  ]));
+  b.append(gridOf(2,[ fText("Address","demographics.address"), fText("Occupation","demographics.occupation") ]));
+  b.append(h("div",{class:"divider"}));
+  b.append(sub("Respiratory diagnosis"));
+  b.append(fChecks(null,"demographics.diagnoses",OPT.diagnoses));
+  b.append(gridOf(2,[
+    fText("Other diagnosis","demographics.diagnosisOther"),
+    fText("Duration of condition","demographics.duration",{ph:"e.g. 5 years"})
+  ]));
+  return b;
+}
+
+function buildHistory(){
+  const b=h("div",{class:"stack"});
+  b.append(sub("Comorbidities"));
+  b.append(fChecks(null,"history.comorbidities",OPT.comorbidities));
+  b.append(gridOf(2, OPT.comorbidityNotes.map(([k,l])=>fText(l,"history.comorbidityNotes."+k))));
+  b.append(h("div",{class:"divider"}));
+  b.append(sub("Surgical history"));
+  b.append(fChecks(null,"history.surgical",OPT.surgical));
+  b.append(fText("Other surgical history","history.surgicalOther"));
+  b.append(fTextarea("Current medication","history.medication",{ph:"List current medications…"}));
+  b.append(h("div",{class:"divider"}));
+  b.append(sub("Oxygen / ventilatory support"));
+  b.append(gridOf(3,[
+    fText("O₂ duration","history.oxygenDuration",{ph:"e.g. 12 hrs/day"}),
+    fNum("O₂ consumption","history.oxygenLpm",{unit:"L/min"}),
+    fNum("CPAP/BiPAP usage","history.cpapBipap",{unit:"hrs/day"})
+  ]));
+  b.append(h("div",{class:"divider"}));
+  b.append(sub("Hospital admissions"));
+  b.append(fChecks("Admission in the last…","history.admissionWindow",OPT.admissionWindow));
+  b.append(fRadios("Number of admissions in last year","history.admissionCount",OPT.admissionCount,{clearable:true}));
+  b.append(fTextarea("Section comments","history.comment"));
+  return b;
+}
+
+function buildInitial(){
+  const b=h("div",{class:"stack"});
+  // vitals
+  b.append(sub("1 · Initial vital parameters"));
+  b.append(gridOf(4,[
+    fNum("Heart rate","initial.hr",{unit:"bpm"}),
+    fNum("SpO₂","initial.spo2",{unit:"%"}),
+    fNum("BP systolic","initial.bpSys",{unit:"mmHg"}),
+    fNum("BP diastolic","initial.bpDia",{unit:"mmHg"})
+  ]));
+  b.append(gridOf(2,[ fNum("Respiratory rate","initial.rr",{unit:"breaths/min"}), fRadios("mMRC scale","initial.mmrc",OPT.mmrc,{clearable:true}) ]));
+  b.append(h("div",{class:"divider"}));
+  // body comp
+  b.append(sub("2 · Body composition"));
+  b.append(fRadios("Availability","initial.bodyComp.available",OPT.avail,{clearable:true}));
+  b.append(gridOf(4,[
+    fNum("FFMI","initial.bodyComp.ffmi",{unit:"kg/m²"}),
+    fNum("SMM","initial.bodyComp.smm",{unit:"kg"}),
+    fNum("Sarcopenic index","initial.bodyComp.si",{unit:"kg/m²"}),
+    fNum("BMI","initial.bodyComp.bmi",{unit:"kg/m²"})
+  ]));
+  b.append(sub("3 · Mid-thigh circumference"));
+  b.append(gridOf(2,[ fNum("Right side","initial.thighR",{unit:"cm"}), fNum("Left side","initial.thighL",{unit:"cm"}) ]));
+  b.append(h("div",{class:"divider"}));
+  // PFT
+  b.append(sub("4a · Pulmonary function test"));
+  b.append(fRadios("Availability","initial.pft.available",OPT.avail,{clearable:true}));
+  b.append(gridOf(3,[
+    fRadios("GOLD stage","initial.pft.gold",OPT.gold,{clearable:true}),
+    fRadios("ABE class","initial.pft.abe",OPT.abe,{clearable:true}),
+    fRadios("GINA step","initial.pft.gina",OPT.gina,{clearable:true})
+  ]));
+  // PFT value grid
+  const pg=h("div",{class:"grid grid-4"});
+  OPT.pftValues.forEach(([lab,key])=> pg.append(fNum(lab,"initial.pft.values."+key)) );
+  b.append(pg);
+  b.append(fRadios("Pattern","initial.pft.pattern",OPT.pattern,{clearable:true}));
+  b.append(h("div",{class:"divider"}));
+  // radiology
+  b.append(sub("4b · Radiological parameters"));
+  b.append(fRadios("Availability","initial.radiology.available",OPT.avail,{clearable:true}));
+  b.append(fChecks(null,"initial.radiology.findings",OPT.radiology));
+  b.append(fText("Other radiological findings","initial.radiology.other"));
+  b.append(sub("4c · HRCT (if ILD present)"));
+  b.append(fRadios("Availability","initial.hrct.available",OPT.avail,{clearable:true}));
+  b.append(fText("Pattern","initial.hrct.pattern"));
+  b.append(sub("4d · Bronchiectasis"));
+  b.append(fRadios(null,"initial.bronchiectasis.present",OPT.presentAbsent,{clearable:true}));
+  b.append(gridOf(2,[
+    fChecks("Right lobes","initial.bronchiectasis.right",["Upper lobe","Middle lobe","Lower lobe"]),
+    fChecks("Left lobes","initial.bronchiectasis.left",["Upper lobe","Lingula","Lower lobe"])
+  ]));
+  b.append(sub("4e–h · Echo, cor pulmonale, Hb, hydration"));
+  b.append(gridOf(2,[
+    fRadios("2D Echo availability","initial.echo.available",OPT.avail,{clearable:true}),
+    fRadios("Pulmonary hypertension","initial.echo.ph",OPT.presentAbsent,{clearable:true})
+  ]));
+  b.append(fRadios("Cor pulmonale","initial.corPulmonale",OPT.presentAbsent,{clearable:true}));
+  b.append(gridOf(3,[
+    fRadios("Hb availability","initial.hb.available",OPT.avail,{clearable:true}),
+    fNum("Hb value","initial.hb.value",{unit:"g/L"}),
+    fRadios("Hb status","initial.hb.status",OPT.hbStatus,{clearable:true})
+  ]));
+  b.append(fRadios("Hydration (tongue assessment)","initial.hydration",OPT.hydration,{clearable:true}));
+  b.append(h("div",{class:"divider"}));
+  // scales completed
+  b.append(sub("5 · Assessment scales completed"));
+  const sc=h("div",{class:"grid grid-2"});
+  OPT.scales.forEach(s=> sc.append(fRadios(s,"initial.scales."+s.replace(/\W/g,""),["Completed","Not Completed"],{clearable:true})) );
+  b.append(sc);
+  b.append(h("div",{class:"divider"}));
+  // vaccination
+  b.append(sub("6 · Vaccination status"));
+  b.append(fChecks(null,"initial.vaccination",OPT.vaccination));
+  b.append(fText("Other vaccination","initial.vaccinationOther"));
+  b.append(h("div",{class:"divider"}));
+  // physical status
+  b.append(sub("7 · Physical status"));
+  b.append(gridOf(2,[
+    fRadios("Activity level","initial.physical",OPT.physical,{clearable:true}),
+    fRadios("Ambulatory status","initial.ambulatory",OPT.ambulatory,{clearable:true})
+  ]));
+  const adl=h("div",{class:"scroll-x"});
+  const tb=h("table",{class:"dt"});
+  tb.append(h("thead",{},h("tr",{},[h("th",{},"Activity"),h("th",{},"Independence"),h("th",{},"Oxygen")])));
+  const body=h("tbody");
+  OPT.adlItems.forEach(item=>{
+    const tr=h("tr");
+    tr.append(h("td",{},item));
+    tr.append(h("td",{},fRadios(null,"initial.adl."+item,OPT.selfDep,{clearable:true})));
+    tr.append(h("td",{},fRadios(null,"initial.adlOxygen."+item,OPT.oxNeed,{clearable:true})));
+    body.append(tr);
+  });
+  tb.append(body); adl.append(tb); b.append(adl);
+  b.append(h("div",{class:"divider"}));
+  // goals
+  b.append(sub("8 · Patient goals"));
+  b.append(fChecks(null,"initial.goals",OPT.goals));
+  b.append(fText("Other goal","initial.goalsOther"));
+  b.append(fTextarea("Initial assessment comments","initial.comment"));
+  return b;
+}
+
+/* longitudinal assessment sheet — the analytics core */
+function buildAssess(){
+  const b=h("div",{class:"stack"});
+  b.append(h("div",{class:"inline-note"},"This grid feeds the per-patient trend charts on the Dashboard. Fill what you measure — blanks are skipped in charts."));
+  const wrap=h("div",{class:"scroll-x"});
+  const t=h("table",{class:"dt"});
+  const head=h("tr",{},[h("th",{},"Parameter")]);
+  OPT.assessTimepoints.forEach(([k,l])=>head.append(h("th",{},l)));
+  t.append(h("thead",{},head));
+  const tb=h("tbody");
+  OPT.assessParams.forEach(([lab,key,unit])=>{
+    const tr=h("tr");
+    tr.append(h("td",{},[h("div",{},lab),h("div",{class:"faint",style:"font-size:11px"},unit)]));
+    OPT.assessTimepoints.forEach(([tk])=>{
+      const path="assess."+key+"."+tk;
+      const inp=h("input",{type:"number",inputmode:"decimal",value:getPath(current,path)??"",placeholder:"—"});
+      inp.addEventListener("input",e=>setPath(current,path,e.target.value));
+      tr.append(h("td",{},inp));
+    });
+    tb.append(tr);
+  });
+  t.append(tb); wrap.append(t); b.append(wrap);
+  return b;
+}
+
+function buildFollowups(){
+  const b=h("div",{class:"stack"});
+  b.append(h("div",{class:"muted"},"Core review at each visit: mMRC, Borg RPE, HR, SpO₂. Use the comment box for goals review / prescription changes."));
+  OPT.followWeeks.forEach(([wk,wl])=>{
+    const card=h("div",{class:"card pad"});
+    card.append(h("div",{class:"subhead"},wl+" review"));
+    card.append(gridOf(4,[
+      fRadios("mMRC","followups."+wk+".mmrc",OPT.mmrc,{clearable:true}),
+      fNum("Borg RPE","followups."+wk+".borg",{unit:"/20"}),
+      fNum("Heart rate","followups."+wk+".hr",{unit:"bpm"}),
+      fNum("SpO₂","followups."+wk+".spo2",{unit:"%"})
+    ]));
+    card.append(fTextarea("Notes / prescription change","followups."+wk+".note"));
+    b.append(card);
+  });
+  b.append(h("div",{class:"divider"}));
+  b.append(sub("Patient goals review (3rd / 4th / 6th / 8th week)"));
+  const gw=h("div",{class:"grid grid-2"});
+  OPT.goals.forEach((g,i)=> gw.append(fRadios(g,"goalReview."+i,["Improved","Not Improved"],{clearable:true})) );
+  b.append(gw);
+  b.append(fRadios("Other goal","goalReview.other",["Improved","Not Improved"],{clearable:true}));
+  return b;
+}
+
+function buildMaintenance(){
+  const b=h("div",{class:"stack"});
+  b.append(h("div",{class:"muted"},"Maintenance program, weeks 12–24. Monitor symptoms, capacity and strength once every 4 weeks (centre visit or tele-consult)."));
+  OPT.maintWeeks.forEach(([wk,wl])=>{
+    const card=h("div",{class:"card pad"});
+    card.append(h("div",{class:"subhead"},wl));
+    card.append(gridOf(4,[
+      fRadios("mMRC","maintenance."+wk+".mmrc",OPT.mmrc,{clearable:true}),
+      fNum("Borg RPE","maintenance."+wk+".borg",{unit:"/20"}),
+      fNum("Baseline HR","maintenance."+wk+".hr",{unit:"bpm"}),
+      fNum("Baseline SpO₂","maintenance."+wk+".spo2",{unit:"%"})
+    ]));
+    card.append(gridOf(3,[
+      fNum("Exercise capacity (6MWD)","maintenance."+wk+".mwd6",{unit:"m"}),
+      fNum("1RM upper / lower","maintenance."+wk+".rm",{unit:"kg"}),
+      fNum("Respiratory muscle (MIP)","maintenance."+wk+".mip",{unit:"cmH₂O"})
+    ]));
+    card.append(fTextarea("Notes","maintenance."+wk+".note"));
+    b.append(card);
+  });
+  return b;
+}
+
+function buildProgress(){
+  const b=h("div",{class:"stack"});
+  // program weeks 1-8
+  if(!Array.isArray(current.progress.weeks)) current.progress.weeks=[];
+  b.append(sub("Program — Weeks 1 to 8"));
+  const wrap1=h("div",{class:"scroll-x"});
+  const t1=h("table",{class:"dt"});
+  t1.append(h("thead",{},h("tr",{},["Week","Breathing exercises","Aerobic (min)","Strength (sets/reps/weight)","Comments"].map(c=>h("th",{},c)))));
+  const tb1=h("tbody");
+  for(let i=0;i<8;i++){
+    current.progress.weeks[i]=current.progress.weeks[i]||{};
+    const r=current.progress.weeks[i];
+    const tr=h("tr",{},[h("td",{},"Week "+(i+1))]);
+    ["breathing","aerobic","strength","comment"].forEach(k=>{
+      const inp=h("input",{type:"text",value:r[k]??""});
+      inp.addEventListener("input",e=>r[k]=e.target.value);
+      tr.append(h("td",{},inp));
+    });
+    tb1.append(tr);
+  }
+  t1.append(tb1); wrap1.append(t1); b.append(wrap1);
+  b.append(gridOf(3,[
+    fText("Program start date","status.startDate",{type:"date"}),
+    fText("Program end date","status.endDate",{type:"date"}),
+    fSelect("Rehabilitation type","status.rehabType",OPT.rehabType)
+  ]));
+  b.append(gridOf(2,[
+    fRadios("Program completed","status.completed",OPT.yesno,{clearable:true}),
+    fText("Reason if incomplete","status.incompleteReason")
+  ]));
+  b.append(h("div",{class:"divider"}));
+  // maintenance progress 12-24
+  if(!Array.isArray(current.progress.maint)) current.progress.maint=[];
+  b.append(sub("Maintenance — Weeks 12, 16, 20, 24"));
+  const wrap2=h("div",{class:"scroll-x"});
+  const t2=h("table",{class:"dt"});
+  t2.append(h("thead",{},h("tr",{},["Week","Breathing exercises","Aerobic (min)","Resistance (weight/reps/sets)","Comments"].map(c=>h("th",{},c)))));
+  const tb2=h("tbody");
+  ["Week 12","Week 16","Week 20","Week 24"].forEach((wl,i)=>{
+    current.progress.maint[i]=current.progress.maint[i]||{};
+    const r=current.progress.maint[i];
+    const tr=h("tr",{},[h("td",{},wl)]);
+    ["breathing","aerobic","resistance","comment"].forEach(k=>{
+      const inp=h("input",{type:"text",value:r[k]??""});
+      inp.addEventListener("input",e=>r[k]=e.target.value);
+      tr.append(h("td",{},inp));
+    });
+    tb2.append(tr);
+  });
+  t2.append(tb2); wrap2.append(t2); b.append(wrap2);
+  return b;
+}
+
+function buildSessions(){
+  const b=h("div",{class:"stack"});
+  b.append(h("div",{class:"between"},[
+    h("div",{class:"muted"},"Session-wise vitals: pre-session, during each exercise modality, and recovery."),
+    h("button",{class:"btn sm",onclick:()=>{ current.sessions.push({sr:current.sessions.length+1}); renderSessions(host); }},"+ Add session")
+  ]));
+  const host=h("div"); b.append(host);
+  function renderSessions(container){
+    container.innerHTML="";
+    if(!current.sessions.length){ container.append(h("div",{class:"empty"},"No sessions yet. Add one to begin logging vitals.")); return; }
+    const wrap=h("div",{class:"scroll-x"});
+    const t=h("table",{class:"dt"});
+    const h1=h("tr"); const h2=h("tr");
+    h1.append(h("th",{rowspan:2},"#"));
+    h1.append(h("th",{colspan:5,style:"text-align:center;background:var(--primary-soft)"},"Pre-session"));
+    OPT.sessionExercises.forEach(([k,l])=> h1.append(h("th",{colspan:5,style:"text-align:center"},l)) );
+    h1.append(h("th",{colspan:5,style:"text-align:center;background:var(--primary-soft)"},"Recovery"));
+    h1.append(h("th",{rowspan:2},""));
+    const groups=["pre",...OPT.sessionExercises.map(e=>e[0]),"recovery"];
+    groups.forEach(()=> OPT.vitalCols.forEach(([k,l])=> h2.append(h("th",{},l))) );
+    t.append(h("thead",{},[h1,h2]));
+    const tb=h("tbody");
+    current.sessions.forEach((s,idx)=>{
+      const tr=h("tr",{},[h("td",{},idx+1)]);
+      groups.forEach(g=>{
+        s[g]=s[g]||{};
+        OPT.vitalCols.forEach(([vk])=>{
+          const inp=h("input",{type:"text",value:s[g][vk]??""});
+          inp.addEventListener("input",e=>s[g][vk]=e.target.value);
+          tr.append(h("td",{},inp));
+        });
+      });
+      tr.append(h("td",{},h("button",{class:"btn ghost sm danger",onclick:()=>{ current.sessions.splice(idx,1); current.sessions.forEach((x,i)=>x.sr=i+1); renderSessions(container); }},"✕")));
+      tb.append(tr);
+    });
+    t.append(tb); wrap.append(t); container.append(wrap);
+  }
+  renderSessions(host);
+  return b;
+}
+
+/* ============================================================================
+   FORM VIEW
+============================================================================ */
+function renderForm(){
+  const v=$("#view-form"); v.innerHTML="";
+  if(!current) current=blankPatient();
+  const editing = !!(current.demographics.name) && registryHas(current.id);
+
+  v.append(h("div",{class:"between",style:"margin-bottom:16px"},[
+    h("div",{},[
+      h("div",{class:"eyebrow"}, editing?"Editing record":"New enrolment"),
+      h("h2",{style:"font-size:20px;margin-top:3px"}, current.demographics.name||"Untitled patient")
+    ]),
+    h("div",{class:"row",style:"align-items:center"},[
+      h("button",{class:"btn ghost",onclick:()=>{ current=null; show("patients"); }},"Cancel"),
+      h("button",{class:"btn primary",onclick:savePatient},"Save record")
+    ])
+  ]));
+
+  // researcher / site metadata
+  const meta=h("div",{class:"card pad",style:"margin-bottom:14px"});
+  meta.append(gridOf(3,[
+    fText("Entered by (researcher)","meta.enteredBy",{ph:"Your name / ID"}),
+    fText("Site","meta.siteId",{ph:"e.g. BLWC Mumbai"}),
+    (()=>{ const f=h("div",{class:"field"});f.append(h("label",{},"Record ID"));f.append(h("input",{type:"text",value:current.id,disabled:true}));return f; })()
+  ]));
+  v.append(meta);
+
+  v.append(section("A1","Demographic data & history", buildDemographics(), true));
+  v.append(section("A1","Past history, comorbidities & support", buildHistory()));
+  v.append(section("A2","Initial assessment", buildInitial()));
+  v.append(section("B","Longitudinal assessment sheet (Initial → Wk 24)", buildAssess()));
+  v.append(section("C","Follow-up (Wk 3,4,6,8) & goal review", buildFollowups()));
+  v.append(section("M","Maintenance program (Wk 12–24)", buildMaintenance()));
+  v.append(section("P","Progress sheet", buildProgress()));
+  v.append(section("S","Session-wise data", buildSessions()));
+
+  v.append(h("div",{class:"save-bar"},[
+    h("button",{class:"btn",onclick:()=>{ current=null; show("patients"); }},"Cancel"),
+    h("button",{class:"btn primary",onclick:savePatient},"Save record")
+  ]));
+}
+
+let registryCache=[];
+function registryHas(id){ return registryCache.some(p=>p.id===id); }
+
+async function savePatient(){
+  if(!current.demographics.name||!current.demographics.name.trim()){
+    toast("Add a patient name or code first","bad");
+    // open first section
+    const firstSec=$("#view-form .section"); if(firstSec) firstSec.classList.add("open");
+    return;
+  }
+  current.updatedAt=nowISO();
+  // remember researcher/site defaults
+  if(current.meta.enteredBy) localStorage.setItem("pr_researcher",current.meta.enteredBy);
+  if(current.meta.siteId) localStorage.setItem("pr_site",current.meta.siteId);
+  await Store.save(current);
+  await refreshCache();
+  toast("Saved · "+current.demographics.name,"good");
+  current=null;
+  show("patients");
+}
+
+/* ============================================================================
+   PATIENTS LIST VIEW
+============================================================================ */
+function renderPatients(){
+  const v=$("#view-patients"); v.innerHTML="";
+  v.append(h("div",{class:"between",style:"margin-bottom:16px"},[
+    h("div",{},[ h("div",{class:"eyebrow"},"Enrolled patients"), h("h2",{style:"font-size:20px;margin-top:3px"},registryCache.length+" record"+(registryCache.length===1?"":"s")) ]),
+    h("button",{class:"btn primary",onclick:()=>{ current=blankPatient(); show("form"); }},"+ New patient")
+  ]));
+
+  if(!registryCache.length){
+    v.append(h("div",{class:"card empty"},[ h("div",{class:"big"},"⁂"), h("div",{},"No patients yet."), h("div",{class:"muted",style:"margin-top:6px"},"Add your first enrolment to start building the registry.") ]));
+    return;
+  }
+
+  const search=h("input",{type:"text",placeholder:"Search name, diagnosis, site…",style:"width:100%;padding:9px 12px;border:1px solid var(--line-strong);border-radius:7px;font:inherit;margin-bottom:12px"});
+  v.append(search);
+
+  const card=h("div",{class:"card",style:"overflow:hidden"});
+  const tbl=h("table",{class:"list"});
+  tbl.append(h("thead",{},h("tr",{},["Name","Age/Sex","Diagnosis","Site","Updated","Status",""].map(c=>h("th",{},c)))));
+  const tbody=h("tbody"); tbl.append(tbody);
+  function paint(filter=""){
+    tbody.innerHTML="";
+    const f=filter.toLowerCase();
+    const rows=registryCache
+      .slice().sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||""))
+      .filter(p=>{
+        if(!f) return true;
+        const dx=(p.demographics.diagnoses||[]).join(" ");
+        return [p.demographics.name,dx,p.meta.siteId,p.demographics.occupation].join(" ").toLowerCase().includes(f);
+      });
+    if(!rows.length){ tbody.append(h("tr",{},h("td",{colspan:7,class:"muted",style:"padding:24px;text-align:center"},"No matches."))); return; }
+    rows.forEach(p=>{
+      const dx=(p.demographics.diagnoses||[]).slice(0,2).join(", ")+((p.demographics.diagnoses||[]).length>2?" +":"");
+      const completed=getPath(p,"status.completed");
+      const statusTag = completed==="Yes"
+        ? h("span",{class:"tag good"},"Completed")
+        : (p.assess&&Object.keys(p.assess).length ? h("span",{class:"tag"},"In program") : h("span",{class:"tag gray"},"Enrolled"));
+      const tr=h("tr",{onclick:()=>openPatient(p.id)},[
+        h("td",{},h("b",{},p.demographics.name||"—")),
+        h("td",{},(p.demographics.age||"—")+" / "+((p.demographics.gender||"—").slice(0,1))),
+        h("td",{},dx||"—"),
+        h("td",{},p.meta.siteId||"—"),
+        h("td",{class:"muted"},fmtDate(p.updatedAt)),
+        h("td",{},statusTag),
+        h("td",{},h("button",{class:"btn ghost sm",onclick:e=>{e.stopPropagation();editPatient(p.id);}},"Edit"))
+      ]);
+      tbody.append(tr);
+    });
+  }
+  search.addEventListener("input",()=>paint(search.value));
+  paint();
+  v.append(card); card.append(tbl);
+}
+
+async function editPatient(id){ current=await Store.get(id); if(current){ ensureShape(current); show("form"); } }
+async function openPatient(id){ const p=await Store.get(id); if(p){ ensureShape(p); show("dashboard"); selectPatientOnDashboard(id); } }
+
+/* make sure older/partial records have all keys before editing */
+function ensureShape(p){
+  const blank=blankPatient();
+  for(const k in blank){ if(p[k]==null) p[k]=blank[k]; }
+  p.progress=p.progress||{weeks:[],maint:[]};
+  p.sessions=p.sessions||[];
+  p.assess=p.assess||{}; p.followups=p.followups||{}; p.maintenance=p.maintenance||{}; p.goalReview=p.goalReview||{};
+}
+
+/* ============================================================================
+   DASHBOARD VIEW
+============================================================================ */
+let dashSelectedId=null;
+let charts=[];
+function destroyCharts(){ charts.forEach(c=>{try{c.destroy()}catch(e){}}); charts=[]; }
+
+function renderDashboard(){
+  const v=$("#view-dashboard"); v.innerHTML=""; destroyCharts();
+  const all=registryCache;
+
+  // ---- cohort tiles ----
+  const total=all.length;
+  const completed=all.filter(p=>getPath(p,"status.completed")==="Yes").length;
+  const withPFT=all.filter(p=>getPath(p,"initial.pft.available")==="Available").length;
+  const onOxygen=all.filter(p=>num(getPath(p,"history.oxygenLpm"))!=null).length;
+
+  v.append(h("div",{class:"between",style:"margin-bottom:16px"},[
+    h("div",{},[ h("div",{class:"eyebrow"},"Programme overview"), h("h2",{style:"font-size:20px;margin-top:3px"},"Dashboard") ]),
+    total?h("button",{class:"btn sm",onclick:()=>exportExcel()},"⤓ Export Excel"):null
+  ]));
+
+  v.append(h("div",{class:"tiles",style:"margin-bottom:18px"},[
+    tile(total,"Patients enrolled","across all sites","accent"),
+    tile(completed,"Completed programme", total?Math.round(completed/total*100)+"% of cohort":"—"),
+    tile(withPFT,"With PFT on record",""),
+    tile(onOxygen,"On supplemental O₂","")
+  ]));
+
+  if(!total){
+    v.append(h("div",{class:"card empty"},[ h("div",{class:"big"},"📊"), h("div",{},"No data to analyse yet."), h("div",{class:"muted",style:"margin-top:6px"},"Add patients in Data entry to populate cohort charts and per-patient trends.") ]));
+    return;
+  }
+
+  // ---- cohort charts ----
+  const cohort=h("div",{class:"grid grid-2",style:"margin-bottom:18px"});
+  cohort.append(chartCard("Patients by diagnosis", c=>makeBar(c, countMulti(all,p=>p.demographics.diagnoses))));
+  cohort.append(chartCard("GOLD stage distribution", c=>makeDoughnut(c, countOne(all,p=>getPath(p,"initial.pft.gold")&&("GOLD "+getPath(p,"initial.pft.gold"))))));
+  v.append(cohort);
+  const cohort2=h("div",{class:"grid grid-2",style:"margin-bottom:22px"});
+  cohort2.append(chartCard("mMRC at baseline", c=>makeBar(c, countOne(all,p=>getPath(p,"initial.mmrc")))));
+  cohort2.append(chartCard("Mean change · key outcomes (Initial → last)", c=>makeCohortDelta(c, all)));
+  v.append(cohort2);
+
+  // ---- per-patient analytics ----
+  v.append(h("div",{class:"divider",style:"margin:6px 0 16px"}));
+  v.append(h("div",{class:"eyebrow",style:"margin-bottom:8px"},"Individual patient analytics"));
+
+  const picker=h("select",{style:"font:inherit;padding:9px 12px;border:1px solid var(--line-strong);border-radius:7px;min-width:260px"});
+  picker.append(h("option",{value:""},"— select a patient —"));
+  all.slice().sort((a,b)=>(a.demographics.name||"").localeCompare(b.demographics.name||""))
+     .forEach(p=>{ const o=h("option",{value:p.id}, (p.demographics.name||"Untitled")+(p.meta.siteId?" · "+p.meta.siteId:"")); if(p.id===dashSelectedId)o.selected=true; picker.append(o); });
+  picker.addEventListener("change",()=>{ dashSelectedId=picker.value; renderPatientPanel(); });
+  v.append(h("div",{class:"row",style:"margin-bottom:14px"},[picker]));
+
+  const panel=h("div",{id:"patientPanel"}); v.append(panel);
+  renderPatientPanel();
+
+  function renderPatientPanel(){
+    panel.innerHTML="";
+    if(!dashSelectedId){ panel.append(h("div",{class:"card empty muted"},"Pick a patient to see their trends, goal progress and session vitals.")); return; }
+    const p=all.find(x=>x.id===dashSelectedId); if(!p) return;
+
+    // header + quick facts
+    const dx=(p.demographics.diagnoses||[]).join(", ")||"—";
+    panel.append(h("div",{class:"card pad",style:"margin-bottom:14px"},[
+      h("div",{class:"between"},[
+        h("div",{},[
+          h("h3",{style:"font-size:17px"},p.demographics.name||"Untitled"),
+          h("div",{class:"muted",style:"font-size:12.5px;margin-top:3px"},
+            [p.demographics.age?p.demographics.age+"y":null,p.demographics.gender,dx].filter(Boolean).join(" · "))
+        ]),
+        h("button",{class:"btn sm",onclick:()=>editPatient(p.id)},"Open record")
+      ]),
+      quickFacts(p)
+    ]));
+
+    // trend charts from assessment sheet
+    const trends=trendSeries(p);
+    if(trends.length){
+      const grid=h("div",{class:"grid grid-2",style:"margin-bottom:14px"});
+      trends.forEach(tr=> grid.append(chartCard(tr.label+" trend", c=>makeLine(c,tr))) );
+      panel.append(grid);
+    } else {
+      panel.append(h("div",{class:"card pad muted",style:"margin-bottom:14px"},"No longitudinal values entered yet for this patient — fill the assessment sheet to unlock trend charts."));
+    }
+
+    // goal review
+    const goals=goalRows(p);
+    if(goals.length){
+      const gc=h("div",{class:"card pad",style:"margin-bottom:14px"});
+      gc.append(h("div",{class:"subhead"},"Goal review"));
+      goals.forEach(([g,st])=> gc.append(h("div",{class:"between",style:"padding:6px 0;border-bottom:1px solid var(--line)"},[
+        h("span",{},g),
+        h("span",{class:"tag "+(st==="Improved"?"good":"warn")},st)
+      ])));
+      panel.append(gc);
+    }
+
+    // session vitals trend
+    if((p.sessions||[]).length){
+      panel.append(chartCard("Session vitals (HR & SpO₂ across sessions)", c=>makeSessionChart(c,p)));
+    }
+  }
+}
+
+function selectPatientOnDashboard(id){ dashSelectedId=id; show("dashboard"); }
+
+function tile(n,l,d,cls=""){ return h("div",{class:"card tile "+cls},[h("div",{class:"n"},String(n)),h("div",{class:"l"},l),d?h("div",{class:"d"},d):null]); }
+function chartCard(title,draw){
+  const card=h("div",{class:"card pad"});
+  card.append(h("div",{class:"subhead",style:"margin-bottom:8px"},title));
+  const box=h("div",{class:"chartbox"}); const cv=h("canvas"); box.append(cv); card.append(box);
+  setTimeout(()=>{ try{ draw(cv); }catch(e){ console.error(e); } },0);
+  return card;
+}
+function quickFacts(p){
+  const f=[];
+  const push=(l,val)=>{ if(val!=null&&val!=="") f.push(h("div",{},[h("span",{class:"faint",style:"font-size:11px"},l+" "),h("b",{},String(val))])); };
+  push("BMI", getPath(p,"initial.bodyComp.bmi"));
+  push("mMRC", getPath(p,"initial.mmrc"));
+  push("GOLD", getPath(p,"initial.pft.gold"));
+  push("6MWD init", getPath(p,"assess.mwd6.initial"));
+  push("CAT init", getPath(p,"assess.cat.initial"));
+  push("Sessions", (p.sessions||[]).length||null);
+  return h("div",{class:"row",style:"gap:18px;margin-top:10px;font-size:13px"},f.length?f:[h("span",{class:"muted"},"—")]);
+}
+
+/* ---- analytics helpers ---- */
+function countMulti(arr,fn){ const m={}; arr.forEach(p=>(fn(p)||[]).forEach(v=>{if(v)m[v]=(m[v]||0)+1;})); return m; }
+function countOne(arr,fn){ const m={}; arr.forEach(p=>{const v=fn(p); if(v)m[v]=(m[v]||0)+1;}); return m; }
+function trendSeries(p){
+  const out=[];
+  OPT.assessParams.forEach(([lab,key,unit])=>{
+    const row=getPath(p,"assess."+key); if(!row) return;
+    const pts=OPT.assessTimepoints.map(([tk,tl])=>({x:tl,y:num(row[tk])}));
+    if(pts.filter(pt=>pt.y!=null).length>=2) out.push({label:lab,unit,points:pts});
+  });
+  return out;
+}
+function goalRows(p){
+  const out=[];
+  OPT.goals.forEach((g,i)=>{ const st=getPath(p,"goalReview."+i); if(st) out.push([g,st]); });
+  const o=getPath(p,"goalReview.other"); if(o) out.push(["Other",o]);
+  return out;
+}
+
+/* ---- chart factories ---- */
+const C={primary:"#0e7c86",accent:"#2a6f97",good:"#2f9e6f",warn:"#bd7d18",bad:"#c5483f",grid:"#e4ebed",ink:"#16282f"};
+const PALETTE=["#0e7c86","#2a6f97","#2f9e6f","#bd7d18","#c5483f","#7a5ea8","#3a8fb7","#c77d3e","#5a9e6f","#9a5b8c"];
+function baseOpts(extra={}){ return Object.assign({responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}},extra); }
+function makeBar(cv,obj){
+  const labels=Object.keys(obj); const data=labels.map(k=>obj[k]);
+  charts.push(new Chart(cv,{type:"bar",data:{labels,datasets:[{data,backgroundColor:C.primary,borderRadius:5,maxBarThickness:46}]},
+    options:baseOpts({scales:{y:{beginAtZero:true,ticks:{precision:0},grid:{color:C.grid}},x:{grid:{display:false}}}})}));
+}
+function makeDoughnut(cv,obj){
+  const labels=Object.keys(obj); const data=labels.map(k=>obj[k]);
+  charts.push(new Chart(cv,{type:"doughnut",data:{labels,datasets:[{data,backgroundColor:PALETTE,borderWidth:2,borderColor:"#fff"}]},
+    options:baseOpts({cutout:"58%",plugins:{legend:{display:true,position:"right",labels:{boxWidth:12,font:{size:11}}}}})}));
+}
+function makeLine(cv,series){
+  const labels=series.points.map(p=>p.x); const data=series.points.map(p=>p.y);
+  charts.push(new Chart(cv,{type:"line",data:{labels,datasets:[{data,label:series.label,borderColor:C.primary,backgroundColor:"rgba(14,124,134,.12)",
+    fill:true,tension:.25,spanGaps:true,pointRadius:4,pointBackgroundColor:C.primary,borderWidth:2.5}]},
+    options:baseOpts({scales:{y:{grid:{color:C.grid}},x:{grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+" "+(series.unit||"")}}}})}));
+}
+function makeSessionChart(cv,p){
+  const labels=p.sessions.map((s,i)=>"S"+(i+1));
+  const hr=p.sessions.map(s=>num(getPath(s,"pre.hr")));
+  const spo2=p.sessions.map(s=>num(getPath(s,"pre.spo2")));
+  charts.push(new Chart(cv,{type:"line",data:{labels,datasets:[
+    {label:"HR (bpm)",data:hr,borderColor:C.bad,backgroundColor:"transparent",tension:.25,spanGaps:true,pointRadius:3,borderWidth:2,yAxisID:"y"},
+    {label:"SpO₂ (%)",data:spo2,borderColor:C.accent,backgroundColor:"transparent",tension:.25,spanGaps:true,pointRadius:3,borderWidth:2,yAxisID:"y1"}
+  ]},options:baseOpts({plugins:{legend:{display:true,position:"top",labels:{boxWidth:12,font:{size:11}}}},
+    scales:{y:{position:"left",grid:{color:C.grid},title:{display:true,text:"HR"}},y1:{position:"right",grid:{display:false},title:{display:true,text:"SpO₂"}},x:{grid:{display:false}}}})}));
+}
+function makeCohortDelta(cv,all){
+  // mean (last available - initial) for a few key outcomes, direction-aware
+  const keys=[["mwd6","6MWD"],["cat","CAT"],["mip","MIP"],["mep","MEP"],["crq","CRQ"]];
+  const labels=[],data=[],colors=[];
+  keys.forEach(([k,l])=>{
+    const deltas=[];
+    all.forEach(p=>{
+      const row=getPath(p,"assess."+k); if(!row) return;
+      const init=num(row.initial);
+      const last=[row.wk24,row.wk8,row.wk1].map(num).find(x=>x!=null);
+      if(init!=null&&last!=null) deltas.push(last-init);
+    });
+    if(deltas.length){
+      const mean=deltas.reduce((a,b)=>a+b,0)/deltas.length;
+      labels.push(l+" (n="+deltas.length+")"); data.push(+mean.toFixed(1));
+      const good = PARAM_DIR[k]==="up" ? mean>=0 : mean<=0;
+      colors.push(good?C.good:C.bad);
+    }
+  });
+  if(!labels.length){ const ctx=cv.getContext("2d"); ctx.font="13px sans-serif"; ctx.fillStyle="#8a9aa1"; ctx.fillText("Not enough paired data yet",10,30); return; }
+  charts.push(new Chart(cv,{type:"bar",data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:5,maxBarThickness:40}]},
+    options:baseOpts({indexAxis:"y",scales:{x:{grid:{color:C.grid}},y:{grid:{display:false}}},plugins:{tooltip:{callbacks:{label:c=>"Δ mean "+c.parsed.x}}}})}));
+}
+
+/* ============================================================================
+   CALCULATORS VIEW  (from SOP Section C formulas)
+============================================================================ */
+function renderCalculators(){
+  const v=$("#view-calculators"); v.innerHTML="";
+  v.append(h("div",{style:"margin-bottom:16px"},[ h("div",{class:"eyebrow"},"Exercise prescription"), h("h2",{style:"font-size:20px;margin-top:3px"},"Calculators") ]));
+  v.append(h("div",{class:"grid grid-2"},[ calcWorkRate(), calcTHR(), calcRM(), calcVO2() ]));
+}
+function calcCard(title,note,fields,compute){
+  const card=h("div",{class:"card pad"});
+  card.append(h("div",{class:"subhead"},title));
+  if(note) card.append(h("div",{class:"help",style:"margin-bottom:10px"},note));
+  const inputs={};
+  const grid=h("div",{class:"grid grid-2"});
+  fields.forEach(f=>{
+    const fl=h("div",{class:"field"});
+    fl.append(h("label",{},f.label));
+    const inp=h("input",{type:"number",inputmode:"decimal",placeholder:f.ph||""});
+    inputs[f.key]=inp; inp.addEventListener("input",run);
+    fl.append(inp); if(f.unit) fl.append(h("div",{class:"unit"},f.unit));
+    grid.append(fl);
+  });
+  card.append(grid);
+  const out=h("div",{style:"margin-top:12px;padding:12px;background:var(--primary-soft);border-radius:8px;font-size:14px;color:var(--primary-d);min-height:44px"});
+  card.append(out);
+  function run(){ const vals={}; for(const k in inputs) vals[k]=num(inputs[k].value); out.innerHTML=compute(vals)||'<span class="muted">Enter values…</span>'; }
+  run();
+  return card;
+}
+function calcWorkRate(){
+  return calcCard("Work rate from walking speed",
+    "Avg speed = 6MWD ÷ 6 min. Work rate (W) = (0.1 × speed[m/min] × weight[kg]) ÷ 60.",
+    [{key:"mwd",label:"6MWD",unit:"m"},{key:"wt",label:"Weight",unit:"kg"}],
+    v=>{ if(v.mwd==null||v.wt==null) return ""; const speed=v.mwd/6; const wr=(0.1*speed*v.wt)/60;
+      return `Speed <b>${speed.toFixed(1)} m/min</b> · Work rate <b>${wr.toFixed(1)} W</b>`; });
+}
+function calcVO2(){
+  return calcCard("VO₂ & work rate from 6MWD",
+    "VO₂ = 4.948 + 0.023 × 6MWD. Work rate (W) = [(VO₂ × weight) ÷ 6.12] × 0.001.",
+    [{key:"mwd",label:"6MWD",unit:"m"},{key:"wt",label:"Weight",unit:"kg"}],
+    v=>{ if(v.mwd==null) return ""; const vo2=4.948+0.023*v.mwd; let s=`VO₂ <b>${vo2.toFixed(2)} mL/kg/min</b>`;
+      if(v.wt!=null){ const wr=((vo2*v.wt)/6.12)*0.001; s+=` · Work rate <b>${wr.toFixed(3)} W</b>`; } return s; });
+}
+function calcTHR(){
+  return calcCard("Target heart rate (Karvonen)",
+    "HRR = HRmax − HRrest. THR = HRR × intensity% + HRrest. HRmax ≈ 220 − age (or from CPET).",
+    [{key:"age",label:"Age (for 220−age)",unit:"years"},{key:"hrmax",label:"HRmax (optional, overrides)",unit:"bpm"},{key:"hrrest",label:"Resting HR",unit:"bpm"},{key:"pct",label:"Intensity",unit:"% (e.g. 60–80)"}],
+    v=>{ const hrmax=v.hrmax!=null?v.hrmax:(v.age!=null?220-v.age:null);
+      if(hrmax==null||v.hrrest==null) return ""; const hrr=hrmax-v.hrrest; let s=`HRmax <b>${hrmax}</b> · HRR <b>${hrr}</b> bpm`;
+      if(v.pct!=null){ const thr=hrr*(v.pct/100)+v.hrrest; s+=` · THR <b>${Math.round(thr)} bpm</b>`; } return s; });
+}
+function calcRM(){
+  return calcCard("1RM (Epley formula)",
+    "1RM = weight × [1 + (reps ÷ 30)].",
+    [{key:"wt",label:"Weight lifted",unit:"kg"},{key:"reps",label:"Repetitions",unit:"reps"}],
+    v=>{ if(v.wt==null||v.reps==null) return ""; const rm=v.wt*(1+v.reps/30);
+      return `Estimated 1RM <b>${rm.toFixed(2)} kg</b><br><span class="help">50–60% = ${(rm*0.5).toFixed(1)}–${(rm*0.6).toFixed(1)} kg · 60–80% = ${(rm*0.6).toFixed(1)}–${(rm*0.8).toFixed(1)} kg</span>`; });
+}
+
+/* ============================================================================
+   EXPORT / BACKUP VIEW
+============================================================================ */
+function renderData(){
+  const v=$("#view-data"); v.innerHTML="";
+  v.append(h("div",{style:"margin-bottom:16px"},[ h("div",{class:"eyebrow"},"Data & portability"), h("h2",{style:"font-size:20px;margin-top:3px"},"Export / Backup") ]));
+
+  const c1=h("div",{class:"card pad",style:"margin-bottom:14px"});
+  c1.append(h("div",{class:"subhead"},"Spreadsheet export"));
+  c1.append(h("div",{class:"help",style:"margin-bottom:12px"},"Downloads one .xlsx workbook: a Patients sheet (one row each), a long-format Assessments sheet (for stats software), plus Sessions and Follow-ups."));
+  c1.append(h("div",{class:"row"},[
+    h("button",{class:"btn primary",onclick:exportExcel},"⤓ Download Excel (.xlsx)"),
+    h("button",{class:"btn",onclick:exportCSV},"⤓ Patients CSV")
+  ]));
+  v.append(c1);
+
+  const c2=h("div",{class:"card pad",style:"margin-bottom:14px"});
+  c2.append(h("div",{class:"subhead"},"Full backup / transfer (JSON)"));
+  c2.append(h("div",{class:"help",style:"margin-bottom:12px"},"Use this to back up everything, or to consolidate records collected by different researchers (each exports JSON, you import them together)."));
+  const fileInput=h("input",{type:"file",accept:".json",style:"display:none"});
+  fileInput.addEventListener("change",importJSON);
+  c2.append(h("div",{class:"row"},[
+    h("button",{class:"btn",onclick:exportJSON},"⤓ Export all (JSON)"),
+    h("button",{class:"btn",onclick:()=>fileInput.click()},"⤒ Import / merge JSON"),
+    fileInput
+  ]));
+  v.append(c2);
+
+  const c3=h("div",{class:"card pad"});
+  c3.append(h("div",{class:"subhead"},"Backend upgrade path"));
+  c3.append(h("div",{class:"help",html:
+    "This build saves to <code class='k'>localStorage</code> in this browser. To share one live dataset across researchers, implement the four methods in "+
+    "<code class='k'>ApiAdapter</code> (top of the script) against your API or Supabase, then set "+
+    "<code class='k'>CONFIG.storage='api'</code>. The rest of the app is already written against that interface."}));
+  c3.append(h("div",{class:"row",style:"margin-top:12px"},[
+    h("button",{class:"btn danger",onclick:confirmWipe},"Erase all local data")
+  ]));
+  v.append(c3);
+}
+
+/* ---- flatten a patient to a wide row for the Patients sheet ---- */
+function flattenPatient(p){
+  const r={};
+  r["Record ID"]=p.id; r["Entered by"]=p.meta.enteredBy; r["Site"]=p.meta.siteId;
+  r["Created"]=p.createdAt; r["Updated"]=p.updatedAt;
+  const d=p.demographics;
+  Object.assign(r,{
+    "Date":d.date,"Name":d.name,"Age":d.age,"Gender":d.gender,"Contact":d.contact,
+    "Height(cm)":d.height,"Weight(kg)":d.weight,"Substance abuse":d.substance,"Ethnicity":d.ethnicity,
+    "Married":d.married,"Address":d.address,"Occupation":d.occupation,
+    "Diagnoses":(d.diagnoses||[]).join("; "),"Diagnosis other":d.diagnosisOther,"Duration":d.duration
+  });
+  const hi=p.history;
+  Object.assign(r,{
+    "Comorbidities":(hi.comorbidities||[]).join("; "),
+    "Surgical":(hi.surgical||[]).join("; "),"Surgical other":hi.surgicalOther,
+    "Medication":hi.medication,"O2 duration":hi.oxygenDuration,"O2 L/min":hi.oxygenLpm,"CPAP/BiPAP hrs":hi.cpapBipap,
+    "Admission window":(hi.admissionWindow||[]).join("; "),"Admissions/yr":hi.admissionCount
+  });
+  const in_=p.initial;
+  Object.assign(r,{
+    "HR":in_.hr,"SpO2":in_.spo2,"BP sys":in_.bpSys,"BP dia":in_.bpDia,"RR":in_.rr,"mMRC":in_.mmrc,
+    "FFMI":in_.bodyComp.ffmi,"SMM":in_.bodyComp.smm,"SI":in_.bodyComp.si,"BMI":in_.bodyComp.bmi,
+    "Thigh R":in_.thighR,"Thigh L":in_.thighL,
+    "PFT avail":in_.pft.available,"GOLD":in_.pft.gold,"ABE":in_.pft.abe,"GINA":in_.pft.gina,"PFT pattern":in_.pft.pattern
+  });
+  OPT.pftValues.forEach(([lab,key])=> r["PFT "+lab]=getPath(in_,"pft.values."+key) );
+  Object.assign(r,{
+    "Bronchiectasis":in_.bronchiectasis.present,"Echo PH":in_.echo.ph,"Cor pulmonale":in_.corPulmonale,
+    "Hb":in_.hb.value,"Hb status":in_.hb.status,"Hydration":in_.hydration,
+    "Vaccination":(in_.vaccination||[]).join("; "),"Physical":in_.physical,"Ambulatory":in_.ambulatory,
+    "Goals":(in_.goals||[]).join("; ")
+  });
+  // assessment timepoints (wide)
+  OPT.assessParams.forEach(([lab,key])=>{
+    OPT.assessTimepoints.forEach(([tk,tl])=> r[lab+" "+tl]=getPath(p,"assess."+key+"."+tk) );
+  });
+  Object.assign(r,{"Start date":p.status.startDate,"End date":p.status.endDate,"Rehab type":p.status.rehabType,
+    "Completed":p.status.completed,"Incomplete reason":p.status.incompleteReason,"# sessions":(p.sessions||[]).length});
+  return r;
+}
+function assessLongRows(p){
+  const rows=[];
+  OPT.assessTimepoints.forEach(([tk,tl])=>{
+    const row={"Record ID":p.id,"Name":p.demographics.name,"Site":p.meta.siteId,"Timepoint":tl};
+    let any=false;
+    OPT.assessParams.forEach(([lab,key])=>{ const v=getPath(p,"assess."+key+"."+tk); row[lab]=v; if(v!=null&&v!=="")any=true; });
+    if(any) rows.push(row);
+  });
+  return rows;
+}
+function sessionRows(p){
+  const rows=[];
+  (p.sessions||[]).forEach((s,i)=>{
+    const row={"Record ID":p.id,"Name":p.demographics.name,"Session":i+1};
+    ["pre",...OPT.sessionExercises.map(e=>e[0]),"recovery"].forEach(g=>{
+      OPT.vitalCols.forEach(([vk,vl])=> row[g+" "+vl]=getPath(s,g+"."+vk) );
+    });
+    rows.push(row);
+  });
+  return rows;
+}
+function followRows(p){
+  const rows=[];
+  OPT.followWeeks.concat(OPT.maintWeeks).forEach(([wk,wl])=>{
+    const src = getPath(p,"followups."+wk)||getPath(p,"maintenance."+wk);
+    if(src && Object.values(src).some(v=>v!=null&&v!=="")){
+      rows.push(Object.assign({"Record ID":p.id,"Name":p.demographics.name,"Visit":wl},src));
+    }
+  });
+  return rows;
+}
+
+async function exportExcel(){
+  const all=registryCache; if(!all.length){ toast("Nothing to export yet"); return; }
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(all.map(flattenPatient)), "Patients");
+  const long=[]; all.forEach(p=>long.push(...assessLongRows(p)));
+  if(long.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(long), "Assessments (long)");
+  const sess=[]; all.forEach(p=>sess.push(...sessionRows(p)));
+  if(sess.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sess), "Sessions");
+  const fol=[]; all.forEach(p=>fol.push(...followRows(p)));
+  if(fol.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fol), "Follow-ups");
+  XLSX.writeFile(wb, "PR_Registry_"+new Date().toISOString().slice(0,10)+".xlsx");
+  toast("Excel exported","good");
+}
+function exportCSV(){
+  const all=registryCache; if(!all.length){ toast("Nothing to export yet"); return; }
+  const ws=XLSX.utils.json_to_sheet(all.map(flattenPatient));
+  const csv=XLSX.utils.sheet_to_csv(ws);
+  downloadBlob(csv,"PR_Patients_"+new Date().toISOString().slice(0,10)+".csv","text/csv");
+  toast("CSV exported","good");
+}
+function exportJSON(){
+  const payload={app:"PR Registry",version:CONFIG.appVersion,schema:CONFIG.schemaVersion,exportedAt:nowISO(),patients:registryCache};
+  downloadBlob(JSON.stringify(payload,null,2),"PR_Registry_backup_"+new Date().toISOString().slice(0,10)+".json","application/json");
+  toast("Backup exported","good");
+}
+async function importJSON(e){
+  const file=e.target.files[0]; if(!file) return;
+  try{
+    const data=JSON.parse(await file.text());
+    const incoming=Array.isArray(data)?data:(data.patients||[]);
+    if(!incoming.length){ toast("No patients found in file","bad"); return; }
+    const byId={}; registryCache.forEach(p=>byId[p.id]=p);
+    let added=0,updated=0;
+    incoming.forEach(p=>{ if(!p.id)p.id=uid(); ensureShape(p); if(byId[p.id])updated++; else added++; byId[p.id]=p; });
+    const merged=Object.values(byId);
+    await Store.bulkReplace(merged); await refreshCache();
+    toast(`Imported · ${added} added, ${updated} updated`,"good");
+    show("patients");
+  }catch(err){ console.error(err); toast("Could not read that file","bad"); }
+  e.target.value="";
+}
+function downloadBlob(content,name,type){
+  const blob=new Blob([content],{type}); const url=URL.createObjectURL(blob);
+  const a=h("a",{href:url,download:name}); document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function confirmWipe(){
+  openModal("Erase all local data?","This permanently deletes every record stored in this browser. Export a backup first if unsure.",[
+    {label:"Cancel",cls:"btn",fn:closeModal},
+    {label:"Erase everything",cls:"btn danger",fn:async()=>{ await Store.bulkReplace([]); await refreshCache(); closeModal(); toast("All local data erased"); show("dashboard"); }}
+  ]);
+}
+
+/* ---- modal ---- */
+function openModal(title,body,actions){
+  const m=$("#modal"); m.innerHTML="";
+  m.append(h("div",{class:"pad"},[
+    h("h3",{style:"font-size:16px;margin-bottom:8px"},title),
+    h("div",{class:"muted",style:"font-size:13px;margin-bottom:16px"},body),
+    h("div",{class:"row",style:"justify-content:flex-end"},actions.map(a=>h("button",{class:a.cls,onclick:a.fn},a.label)))
+  ]));
+  $("#modalBg").classList.add("show");
+}
+function closeModal(){ $("#modalBg").classList.remove("show"); }
+$("#modalBg").addEventListener("click",e=>{ if(e.target.id==="modalBg") closeModal(); });
+
+/* ============================================================================
+   ROUTER + INIT
+============================================================================ */
+const RENDER={ dashboard:renderDashboard, patients:renderPatients, form:renderForm, calculators:renderCalculators, data:renderData };
+function show(view){
+  $$("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  $$(".view").forEach(s=>s.classList.remove("active"));
+  $("#view-"+view).classList.add("active");
+  RENDER[view]&&RENDER[view]();
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+$$("#tabs button").forEach(b=>b.addEventListener("click",()=>{
+  if(b.dataset.view==="form"&&!current) current=blankPatient();
+  show(b.dataset.view);
+}));
+
+async function refreshCache(){ registryCache=await Store.list(); registryCache.forEach(ensureShape); }
+async function init(){
+  $("#storageBadge").textContent = CONFIG.storage==="api" ? "Shared backend" : "Local browser storage";
+  await refreshCache();
+  show("dashboard");
+}
+init();
+</script>
+</body>
+</html>
