@@ -534,17 +534,17 @@ function fRadios(label,path,options,opts={}){
   options.forEach(o=>{
     const val=Array.isArray(o)?o[0]:o, txt=Array.isArray(o)?o[1]:o;
     const on=(getPath(current,path)??"")===val;
-    const rb=h("input",{type:"radio",name:path,style:"display:none"}); rb.checked=on;
-    const chip=h("label",{class:"chip"+(on?" on":"")},[txt]);
-    chip.addEventListener("click",()=>{
-      // toggle off if same value re-clicked
+    const chip=h("span",{class:"chip"+(on?" on":""),role:"button",tabindex:"0"},[txt]);
+    const choose=()=>{
       const cur=getPath(current,path);
-      const next = cur===val && opts.clearable ? "" : val;
+      const next = (cur===val && opts.clearable) ? "" : val;   // tap again to clear
       setPath(current,path,next);
       $$(".chip",wrap).forEach(c=>c.classList.remove("on"));
       if(next) chip.classList.add("on");
-    });
-    wrap.append(chip); chip.prepend(rb);
+    };
+    chip.addEventListener("click",choose);
+    chip.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); choose(); }});
+    wrap.append(chip);
   });
   f.append(wrap); return f;
 }
@@ -943,6 +943,7 @@ async function savePatient(){
     return;
   }
   current.updatedAt=nowISO();
+  current.meta.lastEditedAt=current.updatedAt;
   // remember researcher/site defaults
   if(current.meta.enteredBy) lsSet("pr_researcher",current.meta.enteredBy);
   if(current.meta.siteId) lsSet("pr_site",current.meta.siteId);
@@ -973,7 +974,7 @@ function renderPatients(){
 
   const card=h("div",{class:"card",style:"overflow:hidden"});
   const tbl=h("table",{class:"list"});
-  tbl.append(h("thead",{},h("tr",{},["Name","Age/Sex","Diagnosis","Site","Updated","Status",""].map(c=>h("th",{},c)))));
+  tbl.append(h("thead",{},h("tr",{},["Name","Age/Sex","Diagnosis","Entered by","Site","Updated","Status",""].map(c=>h("th",{},c)))));
   const tbody=h("tbody"); tbl.append(tbody);
   function paint(filter=""){
     tbody.innerHTML="";
@@ -983,9 +984,9 @@ function renderPatients(){
       .filter(p=>{
         if(!f) return true;
         const dx=(p.demographics.diagnoses||[]).join(" ");
-        return [p.demographics.name,dx,p.meta.siteId,p.demographics.occupation].join(" ").toLowerCase().includes(f);
+        return [p.demographics.name,dx,p.meta.siteId,p.meta.enteredBy,p.demographics.occupation].join(" ").toLowerCase().includes(f);
       });
-    if(!rows.length){ tbody.append(h("tr",{},h("td",{colspan:7,class:"muted",style:"padding:24px;text-align:center"},"No matches."))); return; }
+    if(!rows.length){ tbody.append(h("tr",{},h("td",{colspan:8,class:"muted",style:"padding:24px;text-align:center"},"No matches."))); return; }
     rows.forEach(p=>{
       const dx=(p.demographics.diagnoses||[]).slice(0,2).join(", ")+((p.demographics.diagnoses||[]).length>2?" +":"");
       const completed=getPath(p,"status.completed");
@@ -996,6 +997,7 @@ function renderPatients(){
         h("td",{},h("b",{},p.demographics.name||"—")),
         h("td",{},(p.demographics.age||"—")+" / "+((p.demographics.gender||"—").slice(0,1))),
         h("td",{},dx||"—"),
+        h("td",{class:"muted"},p.meta.enteredBy||"—"),
         h("td",{},p.meta.siteId||"—"),
         h("td",{class:"muted"},fmtDate(p.updatedAt)),
         h("td",{},statusTag),
@@ -1025,37 +1027,102 @@ function ensureShape(p){
    DASHBOARD VIEW
 ============================================================================ */
 let dashSelectedId=null;
+let dashSite="__all", dashResearcher="__all";
 let charts=[];
 function destroyCharts(){ charts.forEach(c=>{try{c.destroy()}catch(e){}}); charts=[]; }
+function siteOf(p){ return (p.meta&&p.meta.siteId&&p.meta.siteId.trim())||"Unspecified site"; }
+function enteredByOf(p){ return (p.meta&&p.meta.enteredBy&&p.meta.enteredBy.trim())||"Unattributed"; }
+function distinct(a){ return Array.from(new Set(a)); }
+
+function contributionsTable(list){
+  const card=h("div",{class:"card pad"});
+  card.append(h("div",{class:"subhead",style:"margin-bottom:8px"},"Who entered what"));
+  const byR={};
+  list.forEach(p=>{
+    const r=enteredByOf(p);
+    const o=(byR[r]=byR[r]||{count:0,sites:new Set(),last:""});
+    o.count++; o.sites.add(siteOf(p));
+    const u=p.updatedAt||p.createdAt||""; if(u>o.last) o.last=u;
+  });
+  const rows=Object.entries(byR).sort((a,b)=>b[1].count-a[1].count);
+  const wrap=h("div",{class:"scroll-x"});
+  const t=h("table",{class:"dt"});
+  t.append(h("thead",{},h("tr",{},["Researcher","Site(s)","Records","Last entry"].map(c=>h("th",{},c)))));
+  const tb=h("tbody");
+  rows.forEach(([r,info])=>tb.append(h("tr",{},[
+    h("td",{},h("b",{},r)),
+    h("td",{class:"muted"},Array.from(info.sites).join(", ")),
+    h("td",{},String(info.count)),
+    h("td",{class:"muted"},fmtDate(info.last))
+  ])));
+  t.append(tb); wrap.append(t); card.append(wrap);
+  return card;
+}
 
 function renderDashboard(){
   const v=$("#view-dashboard"); v.innerHTML=""; destroyCharts();
-  const all=registryCache;
+  const allRecs=registryCache;
+  const sites=distinct(allRecs.map(siteOf)).sort();
+  const researchers=distinct(allRecs.map(enteredByOf)).sort();
+  if(dashSite!=="__all" && !sites.includes(dashSite)) dashSite="__all";
+  if(dashResearcher!=="__all" && !researchers.includes(dashResearcher)) dashResearcher="__all";
+  const all=allRecs.filter(p=>
+    (dashSite==="__all"||siteOf(p)===dashSite) &&
+    (dashResearcher==="__all"||enteredByOf(p)===dashResearcher));
 
-  // ---- cohort tiles ----
+  v.append(h("div",{class:"between",style:"margin-bottom:14px"},[
+    h("div",{},[ h("div",{class:"eyebrow"},"Programme overview"), h("h2",{style:"font-size:20px;margin-top:3px"},"Dashboard") ]),
+    allRecs.length?h("button",{class:"btn sm",onclick:()=>exportExcel()},"⤓ Export Excel"):null
+  ]));
+
+  // filter bar
+  if(allRecs.length){
+    const mkSel=(label,opts,cur,onCh)=>{
+      const f=h("div",{class:"field",style:"min-width:170px"});
+      f.append(h("label",{},label));
+      const sel=h("select"); sel.append(h("option",{value:"__all"},"All"));
+      opts.forEach(o=>{ const op=h("option",{value:o},o); if(o===cur)op.selected=true; sel.append(op); });
+      sel.addEventListener("change",e=>onCh(e.target.value));
+      f.append(sel); return f;
+    };
+    v.append(h("div",{class:"row",style:"margin-bottom:16px"},[
+      mkSel("Site", sites, dashSite, val=>{ dashSite=val; renderDashboard(); }),
+      mkSel("Entered by", researchers, dashResearcher, val=>{ dashResearcher=val; renderDashboard(); }),
+      (dashSite!=="__all"||dashResearcher!=="__all")
+        ? h("button",{class:"btn sm",style:"align-self:flex-end",onclick:()=>{dashSite="__all";dashResearcher="__all";renderDashboard();}},"Clear filters") : null
+    ]));
+  }
+
+  // tiles (reflect current filter)
   const total=all.length;
   const completed=all.filter(p=>getPath(p,"status.completed")==="Yes").length;
   const withPFT=all.filter(p=>getPath(p,"initial.pft.available")==="Available").length;
   const onOxygen=all.filter(p=>num(getPath(p,"history.oxygenLpm"))!=null).length;
-
-  v.append(h("div",{class:"between",style:"margin-bottom:16px"},[
-    h("div",{},[ h("div",{class:"eyebrow"},"Programme overview"), h("h2",{style:"font-size:20px;margin-top:3px"},"Dashboard") ]),
-    total?h("button",{class:"btn sm",onclick:()=>exportExcel()},"⤓ Export Excel"):null
-  ]));
+  const siteLabel = dashSite==="__all" ? (sites.length+" site"+(sites.length===1?"":"s")) : dashSite;
 
   v.append(h("div",{class:"tiles",style:"margin-bottom:18px"},[
-    tile(total,"Patients enrolled","across all sites","accent"),
-    tile(completed,"Completed programme", total?Math.round(completed/total*100)+"% of cohort":"—"),
+    tile(total,"Patients in view", siteLabel,"accent"),
+    tile(completed,"Completed programme", total?Math.round(completed/total*100)+"% of view":"—"),
     tile(withPFT,"With PFT on record",""),
     tile(onOxygen,"On supplemental O₂","")
   ]));
 
   if(!total){
-    v.append(h("div",{class:"card empty"},[ h("div",{class:"big"},"📊"), h("div",{},"No data to analyse yet."), h("div",{class:"muted",style:"margin-top:6px"},"Add patients in Data entry to populate cohort charts and per-patient trends.") ]));
+    v.append(h("div",{class:"card empty"},[ h("div",{class:"big"},"📊"),
+      h("div",{}, allRecs.length?"No records match this filter.":"No data to analyse yet."),
+      h("div",{class:"muted",style:"margin-top:6px"}, allRecs.length?"Clear the filters to see the full cohort.":"Add patients in Data entry to populate cohort charts and per-patient trends.") ]));
     return;
   }
 
-  // ---- cohort charts ----
+  // contributions — who entered what
+  v.append(h("div",{class:"eyebrow",style:"margin:2px 0 8px"},"Contributions"));
+  const contrib=h("div",{class:"grid grid-2",style:"margin-bottom:18px"});
+  contrib.append(chartCard("Records by researcher", c=>makeBar(c, countOne(all,enteredByOf))));
+  contrib.append(contributionsTable(all));
+  v.append(contrib);
+
+  // cohort charts (reflect current filter)
+  v.append(h("div",{class:"eyebrow",style:"margin:2px 0 8px"},"Cohort"));
   const cohort=h("div",{class:"grid grid-2",style:"margin-bottom:18px"});
   cohort.append(chartCard("Patients by diagnosis", c=>makeBar(c, countMulti(all,p=>p.demographics.diagnoses))));
   cohort.append(chartCard("GOLD stage distribution", c=>makeDoughnut(c, countOne(all,p=>getPath(p,"initial.pft.gold")&&("GOLD "+getPath(p,"initial.pft.gold"))))));
@@ -1065,14 +1132,14 @@ function renderDashboard(){
   cohort2.append(chartCard("Mean change · Initial → Week 8 (end of program)", c=>makeCohortDelta(c, all)));
   v.append(cohort2);
 
-  // ---- per-patient analytics ----
+  // per-patient analytics
   v.append(h("div",{class:"divider",style:"margin:6px 0 16px"}));
   v.append(h("div",{class:"eyebrow",style:"margin-bottom:8px"},"Individual patient analytics"));
 
   const picker=h("select",{style:"font:inherit;padding:9px 12px;border:1px solid var(--line-strong);border-radius:7px;min-width:260px"});
   picker.append(h("option",{value:""},"— select a patient —"));
   all.slice().sort((a,b)=>(a.demographics.name||"").localeCompare(b.demographics.name||""))
-     .forEach(p=>{ const o=h("option",{value:p.id}, (p.demographics.name||"Untitled")+(p.meta.siteId?" · "+p.meta.siteId:"")); if(p.id===dashSelectedId)o.selected=true; picker.append(o); });
+     .forEach(p=>{ const o=h("option",{value:p.id}, (p.demographics.name||"Untitled")+" · "+enteredByOf(p)); if(p.id===dashSelectedId)o.selected=true; picker.append(o); });
   picker.addEventListener("change",()=>{ dashSelectedId=picker.value; renderPatientPanel(); });
   v.append(h("div",{class:"row",style:"margin-bottom:14px"},[picker]));
 
@@ -1082,7 +1149,7 @@ function renderDashboard(){
   function renderPatientPanel(){
     panel.innerHTML="";
     if(!dashSelectedId){ panel.append(h("div",{class:"card empty muted"},"Pick a patient to see their trends, goal progress and session vitals.")); return; }
-    const p=all.find(x=>x.id===dashSelectedId); if(!p) return;
+    const p=registryCache.find(x=>x.id===dashSelectedId); if(!p) return;
 
     // header + quick facts
     const dx=(p.demographics.diagnoses||[]).join(", ")||"—";
@@ -1091,7 +1158,9 @@ function renderDashboard(){
         h("div",{},[
           h("h3",{style:"font-size:17px"},p.demographics.name||"Untitled"),
           h("div",{class:"muted",style:"font-size:12.5px;margin-top:3px"},
-            [p.demographics.age?p.demographics.age+"y":null,p.demographics.gender,dx].filter(Boolean).join(" · "))
+            [p.demographics.age?p.demographics.age+"y":null,p.demographics.gender,dx].filter(Boolean).join(" · ")),
+          h("div",{class:"faint",style:"font-size:11.5px;margin-top:4px"},
+            "Entered by "+enteredByOf(p)+" · "+siteOf(p)+" · updated "+fmtDate(p.updatedAt))
         ]),
         h("button",{class:"btn sm",onclick:()=>editPatient(p.id)},"Open record")
       ]),
@@ -1217,7 +1286,7 @@ function makeCohortDelta(cv,all){
       colors.push(good?C.good:C.bad);
     }
   });
-  if(!labels.length){ const ctx=cv.getContext("2d"); ctx.font="13px sans-serif"; ctx.fillStyle="#8a9aa1"; ctx.fillText("Not enough paired data yet",10,30); return; }
+  if(!labels.length){ const ctx=cv.getContext&&cv.getContext("2d"); if(ctx){ ctx.font="13px sans-serif"; ctx.fillStyle="#8a9aa1"; ctx.fillText("Not enough paired data yet",10,30); } return; }
   charts.push(new Chart(cv,{type:"bar",data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:5,maxBarThickness:40}]},
     options:baseOpts({indexAxis:"y",scales:{x:{grid:{color:C.grid}},y:{grid:{display:false}}},plugins:{tooltip:{callbacks:{label:c=>"Δ mean "+c.parsed.x}}}})}));
 }
@@ -1479,6 +1548,17 @@ async function exportExcel(){
   if(sess.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sess), "Sessions");
   const fol=[]; all.forEach(p=>fol.push(...followRows(p)));
   if(fol.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fol), "Follow-ups");
+  // Contributions summary: who entered what
+  const byR={};
+  all.forEach(p=>{
+    const r=(p.meta&&p.meta.enteredBy&&p.meta.enteredBy.trim())||"Unattributed";
+    const s=(p.meta&&p.meta.siteId&&p.meta.siteId.trim())||"Unspecified site";
+    const o=(byR[r]=byR[r]||{sites:new Set(),count:0,last:""}); o.count++; o.sites.add(s);
+    const u=p.updatedAt||p.createdAt||""; if(u>o.last)o.last=u;
+  });
+  const contribRows=Object.entries(byR).sort((a,b)=>b[1].count-a[1].count)
+    .map(([r,info])=>({"Researcher":r,"Site(s)":Array.from(info.sites).join("; "),"Records":info.count,"Last entry":info.last}));
+  if(contribRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(contribRows), "Contributions");
   XLSX.writeFile(wb, "PR_Registry_"+new Date().toISOString().slice(0,10)+".xlsx");
   toast("Excel exported","good");
 }
