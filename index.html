@@ -26,10 +26,11 @@
   a{color:var(--accent)}
   h1,h2,h3,h4{margin:0;font-weight:650;letter-spacing:-.01em}
   /* ---------- App shell ---------- */
+  .topbar{position:sticky;top:0;z-index:50;box-shadow:0 2px 12px -5px rgba(0,0,0,.4)}
   header.appbar{
-    position:sticky;top:0;z-index:40;background:var(--primary-d);
+    background:var(--primary-d);
     color:#eafafb;display:flex;align-items:center;gap:14px;
-    padding:10px 18px;box-shadow:0 2px 10px -4px rgba(0,0,0,.4)
+    padding:10px 18px
   }
   .brand{display:flex;align-items:center;gap:11px;min-width:0}
   .brand .glyph{
@@ -47,16 +48,16 @@
   }
   nav.tabs{
     background:var(--surface);border-bottom:1px solid var(--line);
-    display:flex;gap:2px;padding:0 12px;position:sticky;top:54px;z-index:30;
-    overflow-x:auto
+    display:flex;gap:2px;padding:0 12px;
+    overflow-x:auto;-webkit-overflow-scrolling:touch
   }
   nav.tabs button{
     appearance:none;border:0;background:none;font:inherit;cursor:pointer;
     color:var(--muted);padding:12px 15px;border-bottom:2.5px solid transparent;
-    white-space:nowrap;font-weight:550;font-size:13.5px
+    white-space:nowrap;font-weight:550;font-size:13.5px;touch-action:manipulation
   }
   nav.tabs button:hover{color:var(--ink)}
-  nav.tabs button.active{color:var(--primary);border-bottom-color:var(--primary)}
+  nav.tabs button.active{color:var(--primary);border-bottom-color:var(--primary);background:var(--primary-soft)}
   main{max-width:1180px;margin:0 auto;padding:22px 18px 90px}
   .view{display:none}
   .view.active{display:block;animation:fade .2s ease}
@@ -199,6 +200,7 @@
 </style>
 </head>
 <body>
+<div class="topbar">
 <header class="appbar">
   <div class="brand">
     <div class="glyph">⁂</div>
@@ -218,6 +220,7 @@
   <button data-view="calculators">Calculators</button>
   <button data-view="data">Export / Backup</button>
 </nav>
+</div>
 
 <main>
   <!-- DASHBOARD -->
@@ -244,12 +247,12 @@
    PR REGISTRY  —  Pulmonary Rehabilitation patient data capture
    Built around the BLWC Cipla Pulmonary Rehabilitation SOP.
 
-   ARCHITECTURE NOTE (for upscaling to a backend later):
-   All persistence goes through the `Store` object below. Today it uses
-   localStorage (LocalAdapter). To move to a shared multi-researcher backend,
-   implement an adapter with the same async methods (list/get/save/remove)
-   and set CONFIG.storage = 'api'. Nothing else in the app needs to change.
-   See ApiAdapter stub at the bottom and the README notes shared in chat.
+   ARCHITECTURE NOTE:
+   All persistence goes through the `Store` object below. It can run in two modes:
+   'local' (localStorage, default) or 'supabase' (a shared cloud dataset that every
+   researcher reads/writes). Switch at runtime from Export / Backup → Shared cloud;
+   existing local records migrate with one button (no re-entry). To add a different
+   backend, implement list/get/save/remove/bulkReplace and point Store at it.
 ============================================================================ */
 "use strict";
 
@@ -292,14 +295,22 @@ function setPath(o,p,v){
 }
 function fmtDate(iso){ if(!iso) return "—"; const d=new Date(iso); return isNaN(d)?"—":d.toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"}); }
 function num(v){ const n=parseFloat(v); return isFinite(n)?n:null; }
+/* safe localStorage (some browsers block it in private mode / strict cookie settings) */
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 
 /* ============================================================================
-   STORAGE LAYER  (swap this for a backend later — keep the method signatures)
+   STORAGE LAYER
+   The app talks ONLY through `Store`. Two modes:
+     - local    : localStorage, one dataset per browser (default)
+     - supabase : shared cloud DB, every researcher reads/writes one dataset
+   Switch at runtime from Export / Backup → Shared cloud. No re-entry needed:
+   existing local records can be pushed to the cloud with one button.
 ============================================================================ */
 const LocalAdapter = {
-  KEY:"pr_registry_patients_v1",
-  _read(){ try{ return JSON.parse(localStorage.getItem(this.KEY)||"[]"); }catch(e){ return []; } },
-  _write(arr){ localStorage.setItem(this.KEY, JSON.stringify(arr)); },
+  KEY:"pr_registry_patients_v1",          // do NOT change — keeps existing data on redeploy
+  _read(){ try{ return JSON.parse(lsGet(this.KEY)||"[]"); }catch(e){ return []; } },
+  _write(arr){ lsSet(this.KEY, JSON.stringify(arr)); },
   async list(){ return this._read(); },
   async get(id){ return this._read().find(p=>p.id===id)||null; },
   async save(p){
@@ -311,17 +322,47 @@ const LocalAdapter = {
   async bulkReplace(arr){ this._write(arr); }
 };
 
-/* Stub for future shared backend. Implement these 4 methods against your API
-   (or Supabase/Firebase) and flip CONFIG.storage='api'. */
-const ApiAdapter = {
-  async list(){ const r=await fetch(CONFIG.apiBaseUrl+"/patients"); return r.json(); },
-  async get(id){ const r=await fetch(CONFIG.apiBaseUrl+"/patients/"+id); return r.json(); },
-  async save(p){ const r=await fetch(CONFIG.apiBaseUrl+"/patients/"+p.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}); return r.json(); },
-  async remove(id){ await fetch(CONFIG.apiBaseUrl+"/patients/"+id,{method:"DELETE"}); },
-  async bulkReplace(arr){ await fetch(CONFIG.apiBaseUrl+"/patients/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(arr)}); }
+/* Supabase REST adapter.
+   One table:  patients( id text primary key, data jsonb, updated_at timestamptz default now() )
+   The whole patient object lives in `data`, so the form can keep evolving with no migrations. */
+let SUPA={ url:"", key:"" };
+const SupabaseAdapter = {
+  _h(extra){ return Object.assign({apikey:SUPA.key,Authorization:"Bearer "+SUPA.key,"Content-Type":"application/json"}, extra||{}); },
+  _base(){ return SUPA.url.replace(/\/+$/,"")+"/rest/v1/patients"; },
+  async list(){
+    const r=await fetch(this._base()+"?select=data&order=updated_at.desc",{headers:this._h()});
+    if(!r.ok) throw new Error("Cloud read failed ("+r.status+")");
+    return (await r.json()).map(x=>x.data);
+  },
+  async get(id){
+    const r=await fetch(this._base()+"?id=eq."+encodeURIComponent(id)+"&select=data",{headers:this._h()});
+    const a=await r.json(); return a[0]?a[0].data:null;
+  },
+  async save(p){
+    const r=await fetch(this._base(),{method:"POST",
+      headers:this._h({Prefer:"resolution=merge-duplicates,return=minimal"}),
+      body:JSON.stringify([{id:p.id,data:p,updated_at:p.updatedAt}])});
+    if(!r.ok) throw new Error("Cloud save failed ("+r.status+")"); return p;
+  },
+  async remove(id){
+    await fetch(this._base()+"?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:this._h()});
+  },
+  async bulkReplace(arr){
+    // upsert all (used for migration); does not delete others
+    const r=await fetch(this._base(),{method:"POST",
+      headers:this._h({Prefer:"resolution=merge-duplicates,return=minimal"}),
+      body:JSON.stringify(arr.map(p=>({id:p.id,data:p,updated_at:p.updatedAt})))});
+    if(!r.ok) throw new Error("Cloud sync failed ("+r.status+")");
+  }
 };
 
-const Store = CONFIG.storage==="api" ? ApiAdapter : LocalAdapter;
+let STORAGE_MODE="local";
+let Store=LocalAdapter;
+function loadStorageSettings(){
+  SUPA.url=lsGet("pr_supa_url")||""; SUPA.key=lsGet("pr_supa_key")||"";
+  STORAGE_MODE=(lsGet("pr_storage_mode")==="supabase" && SUPA.url && SUPA.key)?"supabase":"local";
+  Store = STORAGE_MODE==="supabase" ? SupabaseAdapter : LocalAdapter;
+}
 
 /* ============================================================================
    SOP-DERIVED OPTION SETS
@@ -397,7 +438,7 @@ const PARAM_DIR = {
 function blankPatient(){
   return {
     id:uid(), createdAt:nowISO(), updatedAt:nowISO(),
-    meta:{ enteredBy:localStorage.getItem("pr_researcher")||"", siteId:localStorage.getItem("pr_site")||"" },
+    meta:{ enteredBy:lsGet("pr_researcher")||"", siteId:lsGet("pr_site")||"" },
     demographics:{ date:new Date().toISOString().slice(0,10), name:"", age:"", gender:"", contact:"",
       height:"", weight:"", substance:"", ethnicity:"", married:"", address:"", occupation:"",
       diagnoses:[], diagnosisOther:"", duration:"" },
@@ -684,11 +725,12 @@ function buildInitial(){
 /* longitudinal assessment sheet — the analytics core */
 function buildAssess(){
   const b=h("div",{class:"stack"});
-  b.append(h("div",{class:"inline-note"},"This grid feeds the per-patient trend charts on the Dashboard. Fill what you measure — blanks are skipped in charts."));
+  b.append(h("div",{class:"inline-note"},"Active program runs Initial → Week 8. Week 24 is the optional maintenance review. Fill what you measure — blanks are skipped in charts."));
   const wrap=h("div",{class:"scroll-x"});
   const t=h("table",{class:"dt"});
   const head=h("tr",{},[h("th",{},"Parameter")]);
-  OPT.assessTimepoints.forEach(([k,l])=>head.append(h("th",{},l)));
+  const caps={initial:"baseline",wk1:"program",wk8:"end of program",wk24:"maintenance"};
+  OPT.assessTimepoints.forEach(([k,l])=>head.append(h("th",{},[h("div",{},l),h("div",{class:"faint",style:"font-size:10px;font-weight:400"},caps[k]||"")])));
   t.append(h("thead",{},head));
   const tb=h("tbody");
   OPT.assessParams.forEach(([lab,key,unit])=>{
@@ -902,8 +944,8 @@ async function savePatient(){
   }
   current.updatedAt=nowISO();
   // remember researcher/site defaults
-  if(current.meta.enteredBy) localStorage.setItem("pr_researcher",current.meta.enteredBy);
-  if(current.meta.siteId) localStorage.setItem("pr_site",current.meta.siteId);
+  if(current.meta.enteredBy) lsSet("pr_researcher",current.meta.enteredBy);
+  if(current.meta.siteId) lsSet("pr_site",current.meta.siteId);
   await Store.save(current);
   await refreshCache();
   toast("Saved · "+current.demographics.name,"good");
@@ -1020,7 +1062,7 @@ function renderDashboard(){
   v.append(cohort);
   const cohort2=h("div",{class:"grid grid-2",style:"margin-bottom:22px"});
   cohort2.append(chartCard("mMRC at baseline", c=>makeBar(c, countOne(all,p=>getPath(p,"initial.mmrc")))));
-  cohort2.append(chartCard("Mean change · key outcomes (Initial → last)", c=>makeCohortDelta(c, all)));
+  cohort2.append(chartCard("Mean change · Initial → Week 8 (end of program)", c=>makeCohortDelta(c, all)));
   v.append(cohort2);
 
   // ---- per-patient analytics ----
@@ -1114,8 +1156,8 @@ function trendSeries(p){
   const out=[];
   OPT.assessParams.forEach(([lab,key,unit])=>{
     const row=getPath(p,"assess."+key); if(!row) return;
-    const pts=OPT.assessTimepoints.map(([tk,tl])=>({x:tl,y:num(row[tk])}));
-    if(pts.filter(pt=>pt.y!=null).length>=2) out.push({label:lab,unit,points:pts});
+    const pts=OPT.assessTimepoints.map(([tk,tl])=>({x:tl,y:num(row[tk])})).filter(pt=>pt.y!=null);
+    if(pts.length>=2) out.push({label:lab,unit,points:pts});
   });
   return out;
 }
@@ -1157,7 +1199,7 @@ function makeSessionChart(cv,p){
     scales:{y:{position:"left",grid:{color:C.grid},title:{display:true,text:"HR"}},y1:{position:"right",grid:{display:false},title:{display:true,text:"SpO₂"}},x:{grid:{display:false}}}})}));
 }
 function makeCohortDelta(cv,all){
-  // mean (last available - initial) for a few key outcomes, direction-aware
+  // mean change over the 8-week program: Initial -> Week 8 (fall back to Week 1 if Wk8 blank)
   const keys=[["mwd6","6MWD"],["cat","CAT"],["mip","MIP"],["mep","MEP"],["crq","CRQ"]];
   const labels=[],data=[],colors=[];
   keys.forEach(([k,l])=>{
@@ -1165,7 +1207,7 @@ function makeCohortDelta(cv,all){
     all.forEach(p=>{
       const row=getPath(p,"assess."+k); if(!row) return;
       const init=num(row.initial);
-      const last=[row.wk24,row.wk8,row.wk1].map(num).find(x=>x!=null);
+      const last=[row.wk8,row.wk1].map(num).find(x=>x!=null);   // program endpoint = Week 8
       if(init!=null&&last!=null) deltas.push(last-init);
     });
     if(deltas.length){
@@ -1267,16 +1309,91 @@ function renderData(){
   ]));
   v.append(c2);
 
-  const c3=h("div",{class:"card pad"});
-  c3.append(h("div",{class:"subhead"},"Backend upgrade path"));
-  c3.append(h("div",{class:"help",html:
-    "This build saves to <code class='k'>localStorage</code> in this browser. To share one live dataset across researchers, implement the four methods in "+
-    "<code class='k'>ApiAdapter</code> (top of the script) against your API or Supabase, then set "+
-    "<code class='k'>CONFIG.storage='api'</code>. The rest of the app is already written against that interface."}));
-  c3.append(h("div",{class:"row",style:"margin-top:12px"},[
-    h("button",{class:"btn danger",onclick:confirmWipe},"Erase all local data")
+  // ---- Shared cloud (Supabase) ----
+  const c3=h("div",{class:"card pad",style:"margin-bottom:14px"});
+  c3.append(h("div",{class:"between"},[
+    h("div",{class:"subhead"},"Shared cloud (Supabase)"),
+    h("span",{class:"tag "+(STORAGE_MODE==="supabase"?"good":"gray")}, STORAGE_MODE==="supabase"?"Connected · live":"Not connected")
   ]));
+  c3.append(h("div",{class:"help",style:"margin:6px 0 14px"},
+    "Connect every researcher to ONE online dataset so you can see all entered data in one place. Free tier is enough. One-time setup: create a Supabase project, run the SQL below, then paste your Project URL and the anon public key here."));
+
+  const urlF=h("div",{class:"field"});
+  urlF.append(h("label",{},"Project URL"));
+  const urlI=h("input",{type:"text",placeholder:"https://xxxx.supabase.co",value:SUPA.url}); urlF.append(urlI);
+  const keyF=h("div",{class:"field"});
+  keyF.append(h("label",{},"Anon public key"));
+  const keyI=h("input",{type:"text",placeholder:"eyJhbGciOi…",value:SUPA.key}); keyF.append(keyI);
+  c3.append(h("div",{class:"grid grid-2"},[urlF,keyF]));
+
+  c3.append(h("div",{class:"row",style:"margin-top:12px"},[
+    h("button",{class:"btn primary",onclick:()=>connectSupabase(urlI.value.trim(),keyI.value.trim())}, STORAGE_MODE==="supabase"?"Reconnect":"Connect & use shared mode"),
+    STORAGE_MODE==="supabase"
+      ? h("button",{class:"btn",onclick:switchToLocal},"Switch back to local")
+      : null,
+    h("button",{class:"btn",onclick:()=>migrateLocalToCloud(urlI.value.trim(),keyI.value.trim())},"⤴ Push my local records to cloud")
+  ]));
+
+  const sql=
+"create table if not exists patients (\n"+
+"  id text primary key,\n"+
+"  data jsonb not null,\n"+
+"  updated_at timestamptz default now()\n"+
+");\n"+
+"alter table patients enable row level security;\n"+
+"create policy \"app access\" on patients for all using (true) with check (true);";
+  const det=h("details",{style:"margin-top:12px"});
+  det.append(h("summary",{style:"cursor:pointer;font-size:12.5px;color:var(--accent)"},"Show the one-time SQL to run in Supabase"));
+  det.append(h("pre",{style:"background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:12px;font-size:12px;overflow:auto;font-family:var(--mono);margin-top:8px"},sql));
+  det.append(h("div",{class:"help"},"This stores each patient as one JSON row, so the form can keep changing with no database migrations. The open policy is fine for a small trusted research group; add Supabase Auth later if you need per-user restrictions."));
+  c3.append(det);
   v.append(c3);
+
+  const c4=h("div",{class:"card pad"});
+  c4.append(h("div",{class:"subhead"},"Danger zone"));
+  c4.append(h("div",{class:"help",style:"margin:6px 0 12px"}, STORAGE_MODE==="supabase"?"You are in shared cloud mode — this erases your LOCAL browser copy only, not the cloud.":"Erases every record stored in this browser. Export a backup first if unsure."));
+  c4.append(h("div",{class:"row"},[ h("button",{class:"btn danger",onclick:confirmWipe},"Erase local browser data") ]));
+  v.append(c4);
+}
+
+/* ---- shared-cloud actions ---- */
+async function connectSupabase(url,key){
+  if(!url||!key){ toast("Enter both Project URL and anon key","bad"); return; }
+  SUPA.url=url; SUPA.key=key;
+  // test the connection
+  try{
+    await SupabaseAdapter.list();
+  }catch(e){ toast("Couldn't reach the cloud — check URL/key and that the table exists","bad"); return; }
+  lsSet("pr_supa_url",url); lsSet("pr_supa_key",key); lsSet("pr_storage_mode","supabase");
+  STORAGE_MODE="supabase"; Store=SupabaseAdapter;
+  updateStorageBadge(); await refreshCache();
+  toast("Connected · now showing the shared dataset","good");
+  show("data");
+}
+function switchToLocal(){
+  lsSet("pr_storage_mode","local"); STORAGE_MODE="local"; Store=LocalAdapter;
+  updateStorageBadge(); refreshCache().then(()=>{ toast("Back to local browser storage"); show("data"); });
+}
+async function migrateLocalToCloud(url,key){
+  const localRecs=LocalAdapter._read();
+  if(!localRecs.length){ toast("No local records to push"); return; }
+  if(!url||!key){ toast("Enter Project URL and anon key first","bad"); return; }
+  SUPA.url=url; SUPA.key=key;
+  openModal("Push "+localRecs.length+" local record"+(localRecs.length>1?"s":"")+" to the cloud?",
+    "This copies the records stored in THIS browser up to the shared dataset (matching IDs are updated, nothing is deleted). Your local copy stays as-is.",
+    [{label:"Cancel",cls:"btn",fn:closeModal},
+     {label:"Push to cloud",cls:"btn primary",fn:async()=>{
+        closeModal();
+        try{
+          localRecs.forEach(ensureShape);
+          await SupabaseAdapter.bulkReplace(localRecs);
+          lsSet("pr_supa_url",url); lsSet("pr_supa_key",key); lsSet("pr_storage_mode","supabase");
+          STORAGE_MODE="supabase"; Store=SupabaseAdapter; updateStorageBadge();
+          await refreshCache();
+          toast("Pushed "+localRecs.length+" record(s) to the shared dataset","good");
+          show("data");
+        }catch(e){ console.error(e); toast("Push failed — check the cloud connection","bad"); }
+     }}]);
 }
 
 /* ---- flatten a patient to a wide row for the Patients sheet ---- */
@@ -1398,9 +1515,9 @@ function downloadBlob(content,name,type){
   const a=h("a",{href:url,download:name}); document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 function confirmWipe(){
-  openModal("Erase all local data?","This permanently deletes every record stored in this browser. Export a backup first if unsure.",[
+  openModal("Erase local browser data?","This permanently deletes records stored in THIS browser. It does not touch the shared cloud dataset. Export a backup first if unsure.",[
     {label:"Cancel",cls:"btn",fn:closeModal},
-    {label:"Erase everything",cls:"btn danger",fn:async()=>{ await Store.bulkReplace([]); await refreshCache(); closeModal(); toast("All local data erased"); show("dashboard"); }}
+    {label:"Erase local copy",cls:"btn danger",fn:async()=>{ LocalAdapter.bulkReplace([]); await refreshCache(); closeModal(); toast("Local browser data erased"); show("dashboard"); }}
   ]);
 }
 
@@ -1422,22 +1539,41 @@ $("#modalBg").addEventListener("click",e=>{ if(e.target.id==="modalBg") closeMod
 ============================================================================ */
 const RENDER={ dashboard:renderDashboard, patients:renderPatients, form:renderForm, calculators:renderCalculators, data:renderData };
 function show(view){
+  if(!RENDER[view]) view="dashboard";
   $$("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   $$(".view").forEach(s=>s.classList.remove("active"));
-  $("#view-"+view).classList.add("active");
-  RENDER[view]&&RENDER[view]();
-  window.scrollTo({top:0,behavior:"smooth"});
+  const vEl=$("#view-"+view); if(vEl) vEl.classList.add("active");
+  try{ RENDER[view](); }
+  catch(err){
+    console.error("Render error in "+view, err);
+    if(vEl) vEl.innerHTML='<div class="card pad"><div class="subhead">Something went wrong drawing this screen</div><div class="muted" style="margin-top:6px">Your data is safe. Details: '+(err&&err.message||err)+'</div></div>';
+  }
+  try{ window.scrollTo(0,0); }catch(e){}
 }
-$$("#tabs button").forEach(b=>b.addEventListener("click",()=>{
+/* event delegation: one listener survives even if a button is re-rendered */
+$("#tabs").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-view]"); if(!b) return;
   if(b.dataset.view==="form"&&!current) current=blankPatient();
   show(b.dataset.view);
-}));
+});
 
-async function refreshCache(){ registryCache=await Store.list(); registryCache.forEach(ensureShape); }
+async function refreshCache(){
+  try{ registryCache=await Store.list(); }catch(e){ console.error(e); registryCache=[]; }
+  registryCache.forEach(ensureShape);
+}
+function updateStorageBadge(){
+  $("#storageBadge").textContent = (STORAGE_MODE==="supabase") ? "Shared cloud · live" : "Local browser storage";
+}
 async function init(){
-  $("#storageBadge").textContent = CONFIG.storage==="api" ? "Shared backend" : "Local browser storage";
-  await refreshCache();
-  show("dashboard");
+  try{
+    loadStorageSettings();
+    updateStorageBadge();
+    await refreshCache();
+    show("dashboard");
+  }catch(err){
+    console.error("Init failed", err);
+    document.querySelector("main").innerHTML='<div class="card pad" style="margin-top:20px"><b>Could not start.</b><div class="muted" style="margin-top:6px">'+(err&&err.message||err)+'</div></div>';
+  }
 }
 init();
 </script>
